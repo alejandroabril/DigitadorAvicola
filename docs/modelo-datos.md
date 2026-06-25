@@ -412,30 +412,30 @@ erDiagram
         String lineaGenetica "OBSOLETO/inerte"
         Boolean usarGuia
         Boolean finalizada
-        Long eliminadaEn "0=activa; >0=papelera (ms)"
+        Long eliminadaEn "0 activa, mayor a 0 papelera ms"
     }
     GALERA {
         String id PK
-        Long partidaId PK_FK
+        Long partidaId FK
         String nombre
         Int orden
     }
     CORRAL {
         String id PK "galeraId-tratamiento"
-        Long partidaId PK_FK
+        Long partidaId FK
         String galeraId FK
         Int orden
     }
     PARCELA {
         String id PK "p.ej. G1A03"
-        Long partidaId PK_FK
+        Long partidaId FK
         String corralId FK
         Int inicio "aves"
         Double pesoInicio "g"
         Int orden
     }
     SEMANA {
-        Long partidaId PK_FK
+        Long partidaId FK
         Int numero PK
         String fechaInicio
         String fechaFin
@@ -445,7 +445,7 @@ erDiagram
     DATO_PARCELA {
         Long partidaId PK
         Int semanaNumero PK
-        String parcelaId PK_FK
+        String parcelaId FK
         IntNullList mort "7 días, JSON"
         Double peso "g/ave"
         DoubleList pesos "muestreos g, JSON"
@@ -454,7 +454,7 @@ erDiagram
     REF_ALIMENTO {
         Long partidaId PK
         Int semanaNumero PK
-        String parcelaId PK_FK
+        String parcelaId FK
         String tipo PK "BR1..BR4"
         Double ingreso "kg"
         Double saldoFin "kg"

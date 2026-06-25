@@ -346,39 +346,39 @@ El alimento físico (kg) por referencia se calcula como **`saldo previo + ingres
 
 ```mermaid
 flowchart TD
-    A([Usuario abre un .davi desde WhatsApp / Archivos / Drive]) --> B{intent-filter ACTION_VIEW<br/>pathPattern *.davi  ó  MIME octet-stream}
-    B --> C[MainActivity.handleIncoming intent]
-    C --> D{action == ACTION_VIEW<br/>y hay uri?}
-    D -- no --> Z([Fin: ignora])
-    D -- sí --> E[Leer InputStream en Dispatchers.IO<br/>contentResolver.openInputStream]
-    E --> F{JSON vacío o nulo?}
-    F -- sí --> T1[/Toast: No se pudo leer el archivo/]
-    F -- no --> G{esBackupCompleto?<br/>version+datosPorParcela  ó  partida+semanas}
+    A(["Usuario abre un .davi (WhatsApp / Archivos / Drive)"]) --> B{"intent-filter ACTION_VIEW: pathPattern *.davi o MIME octet-stream"}
+    B --> C["MainActivity.handleIncoming(intent)"]
+    C --> D{"¿ACTION_VIEW y hay uri?"}
+    D -- no --> Z(["Fin: ignora"])
+    D -- sí --> E["Leer InputStream en Dispatchers.IO"]
+    E --> F{"¿JSON vacío o nulo?"}
+    F -- sí --> T1["Toast: No se pudo leer el archivo"]
+    F -- no --> G{"¿esBackupCompleto? version+datosPorParcela o partida+semanas"}
 
-    G -- no --> H[parseDistribucion - Formato A]
-    H --> H2{distribución vacía?}
-    H2 -- sí --> T2[/Toast: distribución no válida/]
-    H2 -- no --> H3[repo.crearPartidaPendiente]
-    H3 --> H4[ImportBus.newPendingPartidaId]
-    H4 --> H5([Navega al asistente Screen.Setup])
+    G -- no --> H["parseDistribucion (Formato A)"]
+    H --> H2{"¿distribución vacía?"}
+    H2 -- sí --> T2["Toast: distribución no válida"]
+    H2 -- no --> H3["repo.crearPartidaPendiente"]
+    H3 --> H4["ImportBus.newPendingPartidaId"]
+    H4 --> H5(["Navega al asistente (Screen.Setup)"])
 
-    G -- sí --> I[uidDeBackup json]
-    I --> J{existePartidaConUid?}
-    J -- sí --> K[AlertDialog: 'Este lote ya está cargado']
+    G -- sí --> I["uidDeBackup(json)"]
+    I --> J{"¿existePartidaConUid?"}
+    J -- sí --> K["AlertDialog: Este lote ya está cargado"]
     K -->|Cancelar| Z
-    K -->|Guardar como copia| L[importarDesdeJson comoCopia=true<br/>UID nuevo + número con sufijo -C2]
-    J -- no --> M[importarDesdeJson]
+    K -->|Guardar como copia| L["importarDesdeJson(comoCopia=true): UID nuevo + sufijo -C2"]
+    J -- no --> M["importarDesdeJson"]
 
-    M --> N{Formato B o C?}
+    M --> N{"¿Formato B o C?"}
     L --> N
-    N -- B: version+datosPorParcela --> O[importarFormatoBackup]
-    N -- C: partida+semanas --> P[importarFormatoExperimental]
+    N -- "B: version+datosPorParcela" --> O["importarFormatoBackup"]
+    N -- "C: partida+semanas" --> P["importarFormatoExperimental"]
 
-    O --> Q[guardarPartida id=0<br/>upsertSemana + savePeso/saveMort/saveRef]
+    O --> Q["guardarPartida + upsertSemana + savePeso/saveMort/saveRef"]
     P --> Q
-    Q --> R{¿Falló a mitad?}
-    R -- sí --> S[borrarFisicamente newId<br/>Result.failure]
-    S --> T3[/Toast: archivo inválido o dañado/]
-    R -- no --> U[ImportBus.loadedPartidaId = newId]
-    U --> V([Navega al seguimiento Screen.Main 1 - lote restaurado])
+    Q --> R{"¿Falló a mitad?"}
+    R -- sí --> S["borrarFisicamente(newId) + Result.failure"]
+    S --> T3["Toast: archivo inválido o dañado"]
+    R -- no --> U["ImportBus.loadedPartidaId = newId"]
+    U --> V(["Navega al seguimiento (Screen.Main) - lote restaurado"])
 ```
