@@ -297,9 +297,11 @@ Tras una auditoría completa (2026-06) se corrigieron los puntos críticos: **au
 
 ## 16. Herramientas auxiliares
 
-- **`PROMPT_DAVI.md`** (raíz): guía para generar `.davi`. ⚠️ desactualizada en unidades (ver §6).
-- **`distribuidor_davi.html`** (en `Documents/Pruebas`, fuera del repo): herramienta web local para **analizar** `.davi` y **crear distribuciones** nuevas (con mapa visual y descarga). Replica la `Calculadora` en JavaScript.
-- **`app/schemas/`**: esquemas de Room versionados — base para escribir migraciones.
+Estas herramientas se mantienen **fuera del repo** (en el disco local del desarrollador); el repositorio contiene únicamente la app:
+- **`PROMPT_DAVI.md`**: guía para generar `.davi`. ⚠️ desactualizada en unidades (ver §6).
+- **`gen_davi.py`**: generador de `.davi` de ejemplo (mismo aviso de unidades).
+- **`distribuidor_davi.html`**: herramienta web local para **analizar** `.davi` y **crear distribuciones** nuevas (con mapa visual y descarga). Replica la `Calculadora` en JavaScript.
+- **`app/schemas/`** (sí versionado): esquemas de Room — base para escribir migraciones.
 
 ---
 

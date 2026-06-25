@@ -25,3 +25,16 @@ local.properties
 
 # Estado local de Claude Code / herramientas del entorno
 /.claude
+
+# ── Archivos que NO son parte de la app (datos de ejemplo, mockups, scripts dev) ──
+# Se mantienen en el disco local pero NO se versionan: el repo es solo la app.
+/*.davi
+/*.csv
+/*.xlsx
+/*.ico
+/*.html
+/Lote_Prueba_6_Semanas.json
+/PROMPT_DAVI.md
+/gen_davi.py
+/imagen inicio.png
+/Experimental/
