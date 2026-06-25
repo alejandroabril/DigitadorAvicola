@@ -58,9 +58,12 @@ Jerarquía del dominio: **Partida (lote) → Galera (galpón) → Corral (tratam
 
 Los datos **solo** están en el teléfono (`allowBackup=false`). La única red de recuperación es **exportar `.davi` periódicamente** (Ajustes → Exportar) y guardarlos fuera del dispositivo.
 
-## 📖 Documentación completa
+## 📖 Documentación
 
-Toda la guía técnica y de **traspaso de mantenimiento** está en **[`DOCUMENTACION.md`](DOCUMENTACION.md)**: arquitectura, base de datos y migraciones, fórmulas de cada indicador, formato `.davi`, recetas para cambios comunes y pendientes conocidos.
+- **Resumen / traspaso de mantenimiento:** [`DOCUMENTACION.md`](DOCUMENTACION.md) — visión general, build/release, recetas para cambios comunes y pendientes conocidos.
+- **Documentación detallada** (carpeta [`docs/`](docs/), con diagramas):
+  - [Arquitectura](docs/arquitectura.md) · [Modelo de datos](docs/modelo-datos.md) · [Cálculos](docs/calculos.md) · [Pantallas y navegación](docs/pantallas.md) · [Formato `.davi` y exportación](docs/davi-y-exportacion.md)
+  - [Manual de usuario](docs/manual-usuario.md) (para operar la app en campo)
 
 ---
 
