@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Flock Tracker</string>
+    <!-- El salto de línea (\n) hace que el nombre se vea en dos líneas (Flock / Tracker)
+         en el launcher y en el selector "Abrir con". Solo se usa como etiqueta del manifest;
+         dentro de la app "Flock Tracker" va como texto fijo. -->
+    <string name="app_name">Flock\nTracker</string>
 </resources>

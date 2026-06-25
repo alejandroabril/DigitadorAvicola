@@ -3,6 +3,7 @@ package com.digitador.avicola.ui.screen.digitacion
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -574,19 +575,36 @@ fun AlimentoMatrix(parcels: List<Parcela>, semNum: Int, ui: DigitacionUiState, v
                                 color = if (excluida) TextMuted else GreenDeep,
                                 textDecoration = if (excluida) TextDecoration.LineThrough else null
                             )
-                            // Check para DESECHAR esta referencia del cálculo (sigue visible/digitable).
-                            Row(
-                                modifier = Modifier.clickable(enabled = !ui.finalizada) { vm.toggleRefExcluida(ref) },
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            // Toggle para DESECHAR esta referencia del cálculo (sigue visible y
+                            // digitable; solo no cuenta en los indicadores). Pill redondeado:
+                            // tenue cuando se incluye, ámbar relleno cuando está excluida.
+                            val cExcl = if (excluida) Warning else TextMuted
+                            Surface(
+                                onClick = { vm.toggleRefExcluida(ref) },
+                                enabled = !ui.finalizada,
+                                shape = RoundedCornerShape(50),
+                                color = if (excluida) Warning.copy(alpha = 0.14f) else Color.Transparent,
+                                border = BorderStroke(1.dp, cExcl.copy(alpha = if (excluida) 0.9f else 0.35f)),
+                                modifier = Modifier.padding(top = 3.dp)
                             ) {
-                                Icon(
-                                    if (excluida) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
-                                    contentDescription = "Excluir del cálculo",
-                                    tint = if (excluida) Warning else TextMuted,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Text("excluir", fontSize = 8.sp, color = if (excluida) Warning else TextMuted)
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        if (excluida) Icons.Default.Block else Icons.Default.RemoveCircleOutline,
+                                        contentDescription = if (excluida) "Referencia excluida del cálculo" else "Excluir del cálculo",
+                                        tint = cExcl,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        if (excluida) "Excluida" else "Excluir",
+                                        fontSize = 9.sp,
+                                        color = cExcl,
+                                        fontWeight = if (excluida) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
                             }
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 Text("ANT", Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 8.sp, color = Color.Gray)

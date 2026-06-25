@@ -330,6 +330,191 @@ class ExportService @Inject constructor(
             drawCvRow("GLOBAL · todo el lote", cvGlobal, 2, parity)
         }
 
+        // ── Sección: Alimento acumulado por tratamiento (HOJA APARTE, 1 sola hoja) ──
+        // Por galera, tabla con tratamientos en COLUMNAS y referencias en FILAS:
+        // alimento "consumido" (contado) y "excluido" (referencias desechadas), en kg,
+        // acumulado a la semana. Cuentan las referencias ACTIVAS de cada semana y, además,
+        // las marcadas como "Excluir" aparecen aunque ya no estén activas. El alto de filas
+        // se ESCALA para que todo entre en UNA única hoja (no pagina).
+        nuevaPagina()
+        run {
+            val exclMapAll = (1..semNum).associateWith { config.refsExcluidas(partida.uid, it) }
+            // Incluye las referencias activas Y las marcadas como "Excluir" (para que una
+            // referencia excluida aparezca aunque ya no esté activa).
+            val allRefs = (state.semanas.flatMap { it.refsActivas } + exclMapAll.values.flatten())
+                .distinct()
+                .sortedBy { r -> r.filter { it.isDigit() }.toIntOrNull() ?: 0 }
+
+            // Alimento físico (kg) por referencia de un corral, separado en contado/excluido.
+            fun alimentoCorral(corral: Corral): Pair<Map<String, Double>, Map<String, Double>> {
+                val cons = mutableMapOf<String, Double>()
+                val exc = mutableMapOf<String, Double>()
+                for (par in corral.parcelas) {
+                    val dby = state.datosPorParcela[par.id] ?: emptyMap()
+                    for (sn in 1..semNum) {
+                        val s = state.semanas.find { it.numero == sn } ?: continue
+                        val exclSn = exclMapAll[sn] ?: emptySet()
+                        // Referencias activas + las marcadas como "Excluir" esa semana (una
+                        // referencia excluida cuenta/aparece aunque ya no esté activa).
+                        for (tipo in (s.refsActivas + exclSn).distinct()) {
+                            val prev = if (sn == 1) 0.0 else (dby[sn - 1]?.refs?.get(tipo)?.saldoFin ?: 0.0)
+                            val ing = dby[sn]?.refs?.get(tipo)?.ingreso ?: 0.0
+                            val sal = dby[sn]?.refs?.get(tipo)?.saldoFin ?: 0.0
+                            val kg = (prev + ing - sal).coerceAtLeast(0.0)
+                            if (kg <= 0.0) continue
+                            if (tipo in exclSn) exc[tipo] = (exc[tipo] ?: 0.0) + kg
+                            else cons[tipo] = (cons[tipo] ?: 0.0) + kg
+                        }
+                    }
+                }
+                return cons to exc
+            }
+            fun fmtKg(v: Double) = String.format(Locale.US, "%.1f", v)
+
+            // Datos por galera precalculados (para poder escalar y que entre en una hoja).
+            data class GalAlim(
+                val nombre: String, val labels: List<String>,
+                val cons: List<Map<String, Double>>, val exc: List<Map<String, Double>>,
+                val consRefs: List<String>, val excRefs: List<String>
+            )
+            val galeraData = partida.galeras.mapNotNull { galera ->
+                val corrales = galera.corrales.sortedBy { c ->
+                    c.id.substringAfterLast("-").filter { it.isDigit() }.toIntOrNull() ?: 0
+                }
+                if (corrales.isEmpty()) return@mapNotNull null
+                val pairs = corrales.map { alimentoCorral(it) }
+                val cons = pairs.map { it.first }; val exc = pairs.map { it.second }
+                GalAlim(
+                    nombre = galera.nombre,
+                    labels = corrales.map { it.id.substringAfterLast("-") },
+                    cons = cons, exc = exc,
+                    consRefs = allRefs.filter { r -> cons.any { (it[r] ?: 0.0) > 0.0 } },
+                    excRefs = allRefs.filter { r -> exc.any { (it[r] ?: 0.0) > 0.0 } }
+                )
+            }
+
+            // Encabezado de la hoja.
+            canvas.drawText("Alimento acumulado por tratamiento (kg)", margin, y + 14f, pTitle)
+            y += 24f
+            canvas.drawText(
+                "Semana ${semNum.toString().padStart(2, '0')}    ·    Partida ${partida.numero}    ·    Lote ${partida.lote}" +
+                    (if (fechaSem.isNotBlank()) "    ·    Inicio de semana: $fechaSem" else ""),
+                margin, y + 10f, pSub
+            )
+            y += 22f
+
+            // Escalado para FORZAR una sola hoja: calculamos el alto necesario y lo ajustamos
+            // al espacio disponible (sin paginar nunca). El texto acompaña la escala.
+            val footH = 16f
+            val nG = galeraData.size
+            val totalRows = galeraData.sumOf { gd ->
+                1 + gd.consRefs.size + 1 + (if (gd.excRefs.isNotEmpty()) 2 + gd.excRefs.size else 0)
+            }
+            var headH2 = 18f; var rowH2 = 15f; var titleH2 = 16f; var gapH2 = 12f
+            val available = (pageH - margin - footH) - y
+            val needed = nG * headH2 + totalRows * rowH2 + nG * titleH2 + nG * gapH2
+            val s = if (needed > available && needed > 0f) (available / needed).coerceIn(0.45f, 1f) else 1f
+            headH2 *= s; rowH2 *= s; titleH2 *= s; gapH2 *= s
+
+            val tBody = (8f * s).coerceIn(5f, 8f)
+            val tHead = (7.5f * s).coerceIn(5f, 7.5f)
+            val tGal = (11f * s).coerceIn(7.5f, 11f)
+            val amberCol = AndroidColor.rgb(0xB4, 0x69, 0x0E)
+            val pHeadL = Paint().apply { color = AndroidColor.WHITE; textSize = tHead; typeface = bold; isAntiAlias = true }
+            val pCellL = Paint().apply { color = ink; textSize = tBody; isAntiAlias = true }
+            val pCellBL = Paint().apply { color = ink; textSize = tBody; typeface = bold; isAntiAlias = true }
+            val pAmber = Paint().apply { color = amberCol; textSize = tBody; isAntiAlias = true }
+            val pAmberB = Paint().apply { color = amberCol; textSize = tBody; typeface = bold; isAntiAlias = true }
+            val pGalL = Paint().apply { color = green; textSize = tGal; typeface = bold; isAntiAlias = true }
+            val subtotFill = AndroidColor.rgb(0xE4, 0xF0, 0xE8)
+            val consBand = AndroidColor.rgb(0xEC, 0xF5, 0xEF)
+            val excBand = AndroidColor.rgb(0xFB, 0xF1, 0xE2)
+
+            galeraData.forEach { gd ->
+                val labels = gd.labels
+                val labelW2 = 96f
+                val nCols = labels.size + 1   // tratamientos + columna "Galera"
+                val colW2 = (tableW - labelW2) / nCols
+                fun cCenter(i: Int) = margin + labelW2 + colW2 * i + colW2 / 2f  // i == labels.size → Galera
+                val rowBaseline = { y + rowH2 / 2 + 3f }   // baseline centrado de una fila
+
+                fun drawHead() {
+                    pFill.color = green
+                    canvas.drawRect(margin, y, margin + tableW, y + headH2, pFill)
+                    val hb = y + headH2 / 2 + 3f
+                    pHeadL.textAlign = Paint.Align.LEFT
+                    canvas.drawText("Referencia", margin + 6f, hb, pHeadL)
+                    pHeadL.textAlign = Paint.Align.CENTER
+                    labels.forEachIndexed { i, l -> canvas.drawText(l, cCenter(i), hb, pHeadL) }
+                    canvas.drawText("Galera", cCenter(labels.size), hb, pHeadL)
+                    pHeadL.textAlign = Paint.Align.LEFT
+                    y += headH2
+                }
+                fun drawColLines() {
+                    canvas.drawLine(margin + labelW2, y, margin + labelW2, y + rowH2, pLine)
+                    for (i in 0 until nCols) {
+                        val x = margin + labelW2 + colW2 * (i + 1)
+                        canvas.drawLine(x, y, x, y + rowH2, pLine)
+                    }
+                    canvas.drawLine(margin, y + rowH2, margin + tableW, y + rowH2, pLine)
+                }
+                fun drawBand(text: String, amber: Boolean) {
+                    pFill.color = if (amber) excBand else consBand
+                    canvas.drawRect(margin, y, margin + tableW, y + rowH2, pFill)
+                    val p = if (amber) pAmberB else pCellBL
+                    p.textAlign = Paint.Align.LEFT
+                    canvas.drawText(text, margin + 6f, rowBaseline(), p)
+                    canvas.drawLine(margin, y + rowH2, margin + tableW, y + rowH2, pLine)
+                    y += rowH2
+                }
+                fun drawDataRow(label: String, cells: List<Double>, galTotal: Double, amber: Boolean, sumRow: Boolean, dashZero: Boolean) {
+                    if (sumRow) { pFill.color = if (amber) excBand else subtotFill; canvas.drawRect(margin, y, margin + tableW, y + rowH2, pFill) }
+                    val lp = when { amber && sumRow -> pAmberB; amber -> pAmber; else -> pCellBL }
+                    val vp = when { amber && sumRow -> pAmberB; amber -> pAmber; sumRow -> pCellBL; else -> pCellL }
+                    val bl = rowBaseline()
+                    lp.textAlign = Paint.Align.LEFT
+                    canvas.drawText(label, margin + 6f, bl, lp)
+                    vp.textAlign = Paint.Align.CENTER
+                    cells.forEachIndexed { i, v ->
+                        canvas.drawText(if (!dashZero || v > 0.0) fmtKg(v) else "—", cCenter(i), bl, vp)
+                    }
+                    canvas.drawText(fmtKg(galTotal), cCenter(labels.size), bl, vp)
+                    lp.textAlign = Paint.Align.LEFT; vp.textAlign = Paint.Align.LEFT
+                    if (sumRow) canvas.drawLine(margin, y, margin + tableW, y, pLine)
+                    drawColLines()
+                    y += rowH2
+                }
+
+                canvas.drawText(gd.nombre, margin, y + titleH2 * 0.72f, pGalL)
+                y += titleH2
+                drawHead()
+                drawBand("Consumido", amber = false)
+                gd.consRefs.forEach { ref ->
+                    val cells = labels.indices.map { gd.cons[it][ref] ?: 0.0 }
+                    drawDataRow(ref, cells, cells.sum(), amber = false, sumRow = false, dashZero = true)
+                }
+                val consSum = labels.indices.map { i -> gd.consRefs.sumOf { gd.cons[i][it] ?: 0.0 } }
+                drawDataRow("Σ Consumido", consSum, consSum.sum(), amber = false, sumRow = true, dashZero = false)
+
+                if (gd.excRefs.isNotEmpty()) {
+                    drawBand("Excluido", amber = true)
+                    gd.excRefs.forEach { ref ->
+                        val cells = labels.indices.map { gd.exc[it][ref] ?: 0.0 }
+                        drawDataRow(ref, cells, cells.sum(), amber = true, sumRow = false, dashZero = true)
+                    }
+                    val excSum = labels.indices.map { i -> gd.excRefs.sumOf { gd.exc[i][it] ?: 0.0 } }
+                    drawDataRow("Σ Excluido", excSum, excSum.sum(), amber = true, sumRow = true, dashZero = false)
+                }
+                y += gapH2
+            }
+
+            canvas.drawText(
+                "Desglose por alimento físico (saldo previo + ingreso − saldo final); incluye las referencias activas y las marcadas como excluidas.",
+                margin, y + 8f, pSub
+            )
+            y += 14f
+        }
+
         canvas.drawText("Flock Tracker", margin, pageH - 14f, pSub)
         pdf.finishPage(page)
 
@@ -782,7 +967,12 @@ class ExportService @Inject constructor(
         return dir
     }
 
-    fun shareFile(context: Context, file: File) {
+    fun shareFile(
+        context: Context,
+        file: File,
+        asunto: String? = null,
+        mensaje: String? = null
+    ) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
         val mime = when {
             file.name.endsWith(".json") -> "application/json"
@@ -796,6 +986,10 @@ class ExportService @Inject constructor(
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = mime
             putExtra(Intent.EXTRA_STREAM, uri)
+            // Asunto y cuerpo: las apps de correo (Gmail/Outlook) los usan como asunto/mensaje;
+            // WhatsApp toma el texto como mensaje; el resto de apps los ignoran sin problema.
+            if (!asunto.isNullOrBlank()) putExtra(Intent.EXTRA_SUBJECT, asunto)
+            if (!mensaje.isNullOrBlank()) putExtra(Intent.EXTRA_TEXT, mensaje)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         // FLAG_ACTIVITY_NEW_TASK por si el contexto no es una Activity; manejar la

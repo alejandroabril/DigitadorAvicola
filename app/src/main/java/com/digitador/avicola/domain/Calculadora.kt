@@ -219,21 +219,35 @@ object Calculadora {
         semNum: Int,
         partida: Partida,
         semana: Semana?,
-        datosPorParcela: Map<String, Map<Int, DatoParcela>>
+        datosPorParcela: Map<String, Map<Int, DatoParcela>>,
+        refsExcluidas: Set<String> = emptySet()
     ): ValidacionSemana {
         val refsActivas = semana?.refsActivas ?: listOf("BR1")
-        var total = 0; var faltanPeso = 0; var faltanAlimento = 0
-        for (g in partida.galeras) for (k in g.corrales) for (par in k.parcelas) {
-            if (par.inicio == 0) continue
-            total++
-            val d = datosPorParcela[par.id]?.get(semNum)
-            if (d?.peso == null) faltanPeso++
-            // El alimento solo exige el INGRESO (ING). El saldo final (SAL) es opcional.
-            val alimentoOk = d != null && refsActivas.all { tipo ->
-                d.refs[tipo]?.ingreso != null
-            }
-            if (!alimentoOk) faltanAlimento++
+        // Referencias EXIGIDAS = activas y NO marcadas como "Excluir".
+        val refsReq = refsActivas.filter { it !in refsExcluidas }
+        val parcelas = partida.galeras
+            .flatMap { it.corrales }.flatMap { it.parcelas }
+            .filter { it.inicio != 0 }
+        val total = parcelas.size
+
+        var faltanPeso = 0
+        for (par in parcelas) {
+            if (datosPorParcela[par.id]?.get(semNum)?.peso == null) faltanPeso++
         }
+
+        fun tieneIng(par: Parcela, tipo: String) =
+            datosPorParcela[par.id]?.get(semNum)?.refs?.get(tipo)?.ingreso != null
+
+        // El alimento se da por COMPLETO (no bloquea) si:
+        //  · no hay referencias exigidas (todas excluidas), o
+        //  · alguna referencia exigida tiene TODA su columna de INGRESO llena
+        //    (todas las parcelas con aves), o
+        //  · cada parcela tiene el ingreso de todas las referencias exigidas.
+        // Si no, se reporta cuántas parcelas no tienen completo el ingreso exigido.
+        val algunaColumnaCompleta = refsReq.any { tipo -> parcelas.all { tieneIng(it, tipo) } }
+        val faltanAlimento = if (refsReq.isEmpty() || algunaColumnaCompleta) 0
+            else parcelas.count { par -> !refsReq.all { tieneIng(par, it) } }
+
         return ValidacionSemana(total, faltanPeso, faltanAlimento)
     }
 

@@ -2,6 +2,7 @@ package com.digitador.avicola.ui.screen.semana
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -16,9 +17,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -217,7 +220,7 @@ fun SemanaScreen(
                             color = Color.White
                         )
                         Text(
-                            text = (partida?.lote?.takeIf { it.isNotBlank() }?.let { "LOTE $it · " } ?: "") + "GESTIÓN DIARIA",
+                            text = "GESTIÓN DIARIA",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.7f),
                             fontWeight = FontWeight.Bold
@@ -448,6 +451,34 @@ private fun WeekNavigationBar(
     val semActual = semanas.find { it.numero == currentSem }
     val rangoFechas = formatRangoFechas(semActual?.fechaInicio, semActual?.fechaFin)
 
+    // El carrusel siempre centra la semana seleccionada. Cuando hay muchas semanas y el
+    // LazyRow se puede desplazar, llevamos la dona activa al centro del visor.
+    val listState = rememberLazyListState()
+    val targetIndex = semanas.indexOfFirst { it.numero == currentSem }
+    LaunchedEffect(targetIndex, semanas.size) {
+        if (targetIndex < 0) return@LaunchedEffect
+        val info = listState.layoutInfo
+        val visible = info.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+        // Curva suave (ease-in-out) en vez del spring por defecto → sensación menos brusca.
+        val spec = tween<Float>(durationMillis = 350, easing = FastOutSlowInEasing)
+        if (visible != null) {
+            // Si la semana YA está completamente visible, no movemos el carrusel: así no
+            // quedan círculos vecinos recortados por desplazar de más.
+            val fullyVisible = visible.offset >= info.viewportStartOffset &&
+                visible.offset + visible.size <= info.viewportEndOffset
+            if (!fullyVisible) {
+                val viewportCenter = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                val itemCenter = visible.offset + visible.size / 2f
+                listState.animateScrollBy(itemCenter - viewportCenter, spec)
+            }
+        } else {
+            // No está a la vista (carrusel largo): la traemos centrada en una sola animación.
+            val viewport = info.viewportEndOffset - info.viewportStartOffset
+            val itemSize = info.visibleItemsInfo.firstOrNull()?.size ?: 0
+            listState.animateScrollToItem(targetIndex, -(viewport / 2 - itemSize / 2))
+        }
+    }
+
     // Tarjeta centrada: las donas + "Nueva" se centran cuando entran todas; si hay
     // muchas semanas, el LazyRow vuelve a permitir desplazamiento. La fecha va en una
     // pastilla centrada debajo.
@@ -458,24 +489,51 @@ private fun WeekNavigationBar(
         border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceMuted)
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                items(semanas) { sem ->
-                    WeekDonut(
-                        numero = sem.numero,
-                        pct = getProgreso(sem.numero),
-                        active = sem.numero == currentSem,
-                        cerrada = sem.cerrada,
-                        onClick = { onSelect(sem.numero) },
-                        onLongClick = { onLongPress(sem.numero) }
-                    )
+            Box(modifier = Modifier.fillMaxWidth()) {
+                LazyRow(
+                    state = listState,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    items(semanas) { sem ->
+                        WeekDonut(
+                            numero = sem.numero,
+                            pct = getProgreso(sem.numero),
+                            active = sem.numero == currentSem,
+                            cerrada = sem.cerrada,
+                            onClick = { onSelect(sem.numero) },
+                            onLongClick = { onLongPress(sem.numero) }
+                        )
+                    }
+                    item {
+                        AddWeekButton(onClick = onAdd)
+                    }
                 }
-                item {
-                    AddWeekButton(onClick = onAdd)
+                // Difuminado en los bordes: overlay que MATCHEA la altura real de la fila
+                // (matchParentSize) para NO forzar que la tarjeta crezca. Cuando hay semanas
+                // fuera de vista se desvanecen hacia el blanco; solo del lado con contenido oculto.
+                Box(Modifier.matchParentSize()) {
+                    val fadeW = 28.dp
+                    if (listState.canScrollBackward) {
+                        Box(
+                            Modifier
+                                .align(Alignment.CenterStart)
+                                .fillMaxHeight()
+                                .width(fadeW)
+                                .background(Brush.horizontalGradient(listOf(Color.White, Color.Transparent)))
+                        )
+                    }
+                    if (listState.canScrollForward) {
+                        Box(
+                            Modifier
+                                .align(Alignment.CenterEnd)
+                                .fillMaxHeight()
+                                .width(fadeW)
+                                .background(Brush.horizontalGradient(listOf(Color.Transparent, Color.White)))
+                        )
+                    }
                 }
             }
             // Fecha en pastilla centrada.

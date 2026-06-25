@@ -178,7 +178,9 @@ class SemanaViewModel @Inject constructor(
     fun validarSemana(numero: Int): ValidacionSemana {
         val st = _ui.value.appState
         val p = st.partida ?: return ValidacionSemana(0, 0, 0)
-        return Calculadora.validarSemana(numero, p, st.getSemana(numero), st.datosPorParcela)
+        // Respetar el check "Excluir": esas referencias no se exigen al cerrar la semana.
+        val excluidas = config.refsExcluidas(p.uid, numero)
+        return Calculadora.validarSemana(numero, p, st.getSemana(numero), st.datosPorParcela, excluidas)
     }
 
     /** Cierra (termina) una semana: su digitación queda en solo lectura. */

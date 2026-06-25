@@ -21,7 +21,7 @@
             </intent-filter>
 
             <!-- Abrir archivos .davi por ruta (file://, Archivos/Drive con extensión visible) -->
-            <intent-filter android:label="Importar distribución">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -37,7 +37,7 @@
 
             <!-- Filtro amplio: WhatsApp entrega el .davi como content:// con MIME
                  application/octet-stream y sin extensión en la ruta. -->
-            <intent-filter android:label="Importar distribución">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />

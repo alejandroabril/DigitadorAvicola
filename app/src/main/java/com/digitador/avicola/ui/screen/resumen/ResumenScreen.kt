@@ -167,7 +167,15 @@ fun ResumenScreen(
                                 scope.launch {
                                     try {
                                         val file = vm.exportService.exportarExcel(context, opts)
-                                        vm.exportService.shareFile(context, file)
+                                        val num = st.partida?.numero?.takeIf { it.isNotBlank() } ?: "—"
+                                        val loteTxt = st.partida?.lote?.takeIf { it.isNotBlank() }?.let { " · Lote $it" } ?: ""
+                                        vm.exportService.shareFile(
+                                            context, file,
+                                            asunto = "Estadística avícola — Partida $num$loteTxt",
+                                            mensaje = "Adjunto el reporte de estadística del lote $num$loteTxt.\n\n" +
+                                                "Contiene los indicadores por parcela y semana (peso, consumo, FCR, GDP, mortalidad).\n\n" +
+                                                "— Enviado desde Flock Tracker"
+                                        )
                                     } finally { exporting = false }
                                 }
                             },
@@ -191,7 +199,14 @@ fun ResumenScreen(
                                 scope.launch {
                                     try {
                                         val file = vm.exportService.exportarPdfResumen(context, semanaNumero, opts)
-                                        vm.exportService.shareFile(context, file)
+                                        val num = st.partida?.numero?.takeIf { it.isNotBlank() } ?: "—"
+                                        val loteTxt = st.partida?.lote?.takeIf { it.isNotBlank() }?.let { " · Lote $it" } ?: ""
+                                        vm.exportService.shareFile(
+                                            context, file,
+                                            asunto = "Análisis semana $semPad — Partida $num$loteTxt",
+                                            mensaje = "Adjunto el análisis de la semana $semPad del lote $num$loteTxt.\n\n" +
+                                                "— Enviado desde Flock Tracker"
+                                        )
                                     } finally { exportingPdf = false }
                                 }
                             },
