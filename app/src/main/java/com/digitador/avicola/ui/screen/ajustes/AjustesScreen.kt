@@ -36,6 +36,15 @@ fun AjustesScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Versión real del APK instalado (refleja el versionName de build.gradle.kts).
+    val versionName = remember {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     var showCerrarDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(ui.mensaje) {
@@ -148,7 +157,18 @@ fun AjustesScreen(
                 )
             }
 
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(24.dp))
+
+            // ── Versión de la app ──
+            Text(
+                text = "Flock Tracker · v${versionName ?: "—"}",
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+                fontSize = 12.sp,
+                color = TextTertiary
+            )
+
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
