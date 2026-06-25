@@ -1,0 +1,1055 @@
+package com.digitador.avicola.data.repository
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color as AndroidColor
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
+import androidx.core.content.FileProvider
+import com.digitador.avicola.R
+import com.digitador.avicola.domain.*
+import java.util.Locale
+import org.apache.poi.ss.usermodel.*
+import org.apache.poi.ss.util.CellRangeAddress
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import org.apache.poi.xssf.usermodel.XSSFSheet
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTTable
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTTableColumn
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTTableColumns
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTTableStyleInfo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class ExportService @Inject constructor(
+    private val repo: DigitadorRepository,
+    private val config: ConfigRepository
+) {
+
+    suspend fun exportarExcel(
+        context: Context,
+        opciones: OpcionesExport = OpcionesExport()
+    ): File = withContext(Dispatchers.IO) {
+        val state = repo.cargarEstado()
+        val wb    = XSSFWorkbook()
+
+        try {
+            // Estilos creados UNA sola vez y reutilizados en todas las hojas.
+            val styles = createStyles(wb)
+
+            // A pedido: el Excel exportado contiene SOLO la hoja "Estadística".
+            // Las hojas por galera y la de Resumen quedan deshabilitadas (las funciones
+            // exportGalera/exportResumen se conservan por si se reactivan).
+            exportEstadistica(wb, state, styles, opciones)
+
+            val dir  = exportsDir(context)
+            // Nombre identificable: Lote_{partida}_{fecha}.xlsx
+            val numero = state.partida?.numero?.filter { it.isLetterOrDigit() || it == '-' }?.ifBlank { "lote" } ?: "lote"
+            val fecha = java.time.LocalDate.now().toString()
+            val file = File(dir, "Lote_${numero}_$fecha.xlsx")
+            FileOutputStream(file).use { wb.write(it) }
+            wb.close()
+            file
+        } catch (e: Exception) {
+            wb.close()
+            throw e
+        }
+    }
+
+    /**
+     * Genera un PDF del "Análisis de la semana": por cada galera, una tabla con
+     * TODOS los tratamientos de [semNum] y CADA indicador medido (saldo, peso,
+     * consumo sem/acum, FCR sem/acum, GDP sem/lineal, mortalidad acum). Si
+     * [opciones] lo pide, agrega FEP, FCR ajustado y CV%; en la semana 1 agrega Ratio.
+     * Cada fila usa el mismo cálculo que la pantalla (Calculadora.computeMetricasCorral).
+     */
+    suspend fun exportarPdfResumen(
+        context: Context,
+        semNum: Int,
+        opciones: OpcionesExport = OpcionesExport()
+    ): File = withContext(Dispatchers.IO) {
+        val state = repo.cargarEstado()
+        val partida = state.partida ?: error("No hay partida activa")
+        val semana = state.getSemana(semNum)
+
+        // Paleta (ARGB) — Color de POI también existe, por eso el alias AndroidColor.
+        val green = AndroidColor.rgb(0x1B, 0x6E, 0x37)
+        val ink = AndroidColor.rgb(0x15, 0x26, 0x1C)
+        val gray = AndroidColor.rgb(0x8A, 0x98, 0x8F)
+        val rowAlt = AndroidColor.rgb(0xF1, 0xF8, 0xF3)
+        val lineCol = AndroidColor.rgb(0xDD, 0xE4, 0xDE)
+        val bold = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+
+        val pTitle = Paint().apply { color = ink; textSize = 16f; typeface = bold; isAntiAlias = true }
+        val pSub = Paint().apply { color = gray; textSize = 9f; isAntiAlias = true }
+        val pGalera = Paint().apply { color = green; textSize = 11f; typeface = bold; isAntiAlias = true }
+        val pHead = Paint().apply { color = AndroidColor.WHITE; textSize = 7.5f; typeface = bold; isAntiAlias = true }
+        val pCell = Paint().apply { color = ink; textSize = 8f; isAntiAlias = true }
+        val pCellB = Paint().apply { color = ink; textSize = 8f; typeface = bold; isAntiAlias = true }
+        val pFill = Paint()
+        val pLine = Paint().apply { color = lineCol; strokeWidth = 0.5f }
+
+        // KPIs = FILAS (los tratamientos van en COLUMNAS). Cada KPI extrae su valor
+        // de las métricas de un tratamiento.
+        fun f(v: Double?, pat: String, mult: Double = 1.0) =
+            if (v == null) "—" else String.format(Locale.US, pat, v * mult)
+        fun d1(v: Double?) = if (v == null) "—" else String.format(Locale.US, "%.1f", v)
+
+        data class Kpi(val label: String, val get: (MetricasCorral?) -> String)
+        val kpis = buildList {
+            add(Kpi("Saldo (aves)") { m -> m?.saldo?.toString() ?: "—" })
+            add(Kpi("Peso (g)") { m -> d1(m?.promPeso) })
+            add(Kpi("Consumo sem (g)") { m -> d1(m?.consumoGave) })
+            add(Kpi("Consumo acum (g)") { m -> d1(m?.consumoAcum) })
+            add(Kpi("FCR semanal") { m -> f(m?.fcrSem, "%.3f") })
+            add(Kpi("FCR acumulado") { m -> f(m?.fcrAcum, "%.3f") })
+            add(Kpi("GDP sem (g/día)") { m -> d1(m?.gdpSem) })
+            add(Kpi("GDP lineal (g/día)") { m -> d1(m?.gdpLineal) })
+            add(Kpi("Mortalidad %") { m -> if (m == null) "—" else String.format(Locale.US, "%.1f%%", m.mortAcumPct * 100) })
+            if (semNum == 1) add(Kpi("Ratio crecimiento") { m -> f(m?.ratio, "%.2f") })
+            if (opciones.incluirFep) add(Kpi("FEP") { m -> f(m?.fep, "%.0f") })
+            if (opciones.incluirFcrAjustado) add(Kpi("FCR ajustado") { m -> f(m?.fcrAdj, "%.3f") })
+            // El CV del peso ya no va aquí: tiene su propia sección dedicada al final
+            // del PDF (por tratamiento, por galera y global).
+        }
+
+        // A4 horizontal (puntos a 72 dpi).
+        val pageW = 842; val pageH = 595
+        val margin = 30f
+        val tableW = pageW - margin * 2
+        val labelW = 150f   // primera columna = nombres de los indicadores
+
+        // Logo Cargill (esquina superior derecha). Si el recurso no existe, se omite
+        // sin romper la generación del PDF. La imagen es cuadrada con fondo blanco,
+        // así que el espacio en blanco se funde con la hoja.
+        val logo: Bitmap? = try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.cargill_logo)
+        } catch (e: Exception) { null }
+        val logoSize = 78f
+
+        val pdf = PdfDocument()
+        var pageNo = 1
+        var page = pdf.startPage(PdfDocument.PageInfo.Builder(pageW, pageH, pageNo).create())
+        var canvas = page.canvas
+        var y = margin
+
+        fun drawLogo() {
+            val bmp = logo ?: return
+            val left = pageW - margin - logoSize
+            val top = 8f
+            canvas.drawBitmap(bmp, null, RectF(left, top, left + logoSize, top + logoSize), null)
+        }
+
+        fun nuevaPagina() {
+            canvas.drawText("Flock Tracker", margin, pageH - 14f, pSub)
+            pdf.finishPage(page)
+            pageNo += 1
+            page = pdf.startPage(PdfDocument.PageInfo.Builder(pageW, pageH, pageNo).create())
+            canvas = page.canvas
+            y = margin
+            drawLogo()
+        }
+        fun asegurar(alto: Float): Boolean {
+            if (y + alto > pageH - margin) { nuevaPagina(); return true }
+            return false
+        }
+
+        val headH = 20f
+        val rowH = 17f
+
+        // Encabezado del documento.
+        drawLogo()
+        canvas.drawText("Análisis de la semana ${semNum.toString().padStart(2, '0')}", margin, y + 14f, pTitle)
+        y += 24f
+        val fechaSem = semana?.fechaInicio ?: ""
+        canvas.drawText(
+            "Partida ${partida.numero}    ·    Lote ${partida.lote}" +
+                (if (fechaSem.isNotBlank()) "    ·    Inicio de semana: $fechaSem" else ""),
+            margin, y + 10f, pSub
+        )
+        y += 24f
+
+        partida.galeras.forEach { galera ->
+            // Tratamientos (COLUMNAS), ordenados por número (K1..K5 / K7..K11).
+            val corrales = galera.corrales.sortedBy { c ->
+                c.id.substringAfterLast("-").filter { it.isDigit() }.toIntOrNull() ?: 0
+            }
+            if (corrales.isEmpty()) return@forEach
+            val labels = corrales.map { it.id.substringAfterLast("-") }
+            val exclMapPdf = (1..semNum).associateWith { config.refsExcluidas(partida.uid, it) }
+            val metricas = corrales.associate { c ->
+                c.id.substringAfterLast("-") to (
+                    if (semana != null)
+                        Calculadora.computeMetricasCorral(c, semNum, semana, state.semanas, state.datosPorParcela, exclMapPdf)
+                    else null
+                )
+            }
+            val colW = (tableW - labelW) / labels.size
+            fun colCenter(i: Int) = margin + labelW + colW * i + colW / 2f
+
+            fun drawHeaderTrat() {
+                pFill.color = green
+                canvas.drawRect(margin, y, margin + tableW, y + headH, pFill)
+                pHead.textAlign = Paint.Align.LEFT
+                canvas.drawText("INDICADOR", margin + 6f, y + 13f, pHead)
+                pHead.textAlign = Paint.Align.CENTER
+                labels.forEachIndexed { i, lbl -> canvas.drawText(lbl, colCenter(i), y + 13f, pHead) }
+                pHead.textAlign = Paint.Align.LEFT
+                y += headH
+            }
+
+            asegurar(18f + headH + rowH)
+            canvas.drawText(galera.nombre, margin, y + 10f, pGalera)
+            y += 16f
+            drawHeaderTrat()
+
+            kpis.forEachIndexed { idx, kpi ->
+                if (asegurar(rowH)) drawHeaderTrat()
+                if (idx % 2 == 1) {
+                    pFill.color = rowAlt
+                    canvas.drawRect(margin, y, margin + tableW, y + rowH, pFill)
+                }
+                // Nombre del indicador (izquierda, en negrita)
+                pCellB.textAlign = Paint.Align.LEFT
+                canvas.drawText(kpi.label, margin + 6f, y + 12f, pCellB)
+                // Valor por tratamiento (centrado en su columna)
+                pCell.textAlign = Paint.Align.CENTER
+                labels.forEachIndexed { i, lbl -> canvas.drawText(kpi.get(metricas[lbl]), colCenter(i), y + 12f, pCell) }
+                pCell.textAlign = Paint.Align.LEFT
+                pCellB.textAlign = Paint.Align.LEFT
+                // Líneas: horizontal inferior + separadores verticales de columnas.
+                canvas.drawLine(margin, y + rowH, margin + tableW, y + rowH, pLine)
+                canvas.drawLine(margin + labelW, y, margin + labelW, y + rowH, pLine)
+                for (i in 1 until labels.size) {
+                    val x = margin + labelW + colW * i
+                    canvas.drawLine(x, y, x, y + rowH, pLine)
+                }
+                y += rowH
+            }
+            y += 16f
+        }
+
+        // ── Sección: Coeficiente de variación del peso (HOJA APARTE) ────────
+        // Mismo cálculo que la planilla (DesvEst muestral / promedio de los pesos
+        // promedio de las jaulas) en tres niveles: tratamiento, galera y global.
+        // Siempre arranca en una hoja propia.
+        nuevaPagina()
+        run {
+            val cvLabelW = 240f
+            val cvCols = listOf("n jaulas", "Peso prom (g)", "Desv. est (g)", "2σ (g)", "CV % peso")
+            val cvColW = (tableW - cvLabelW) / cvCols.size
+            fun cvColCenter(i: Int) = margin + cvLabelW + cvColW * i + cvColW / 2f
+
+            val subtotFill = AndroidColor.rgb(0xE4, 0xF0, 0xE8)
+            val globalFill = AndroidColor.rgb(0x0D, 0x1A, 0x12)
+            val pWhite = Paint().apply { color = AndroidColor.WHITE; textSize = 8.5f; typeface = bold; isAntiAlias = true }
+            val pLineG = Paint().apply { color = green; strokeWidth = 1f }
+
+            fun drawCvHeader() {
+                pFill.color = green
+                canvas.drawRect(margin, y, margin + tableW, y + headH, pFill)
+                pHead.textAlign = Paint.Align.LEFT
+                canvas.drawText("GRUPO", margin + 6f, y + 13f, pHead)
+                pHead.textAlign = Paint.Align.CENTER
+                cvCols.forEachIndexed { i, lbl -> canvas.drawText(lbl, cvColCenter(i), y + 13f, pHead) }
+                pHead.textAlign = Paint.Align.LEFT
+                y += headH
+            }
+
+            fun cvVals(cv: CvPeso?): List<String> = if (cv == null) List(5) { "—" } else listOf(
+                cv.n.toString(),
+                String.format(Locale.US, "%.1f", cv.media),
+                String.format(Locale.US, "%.1f", cv.desv),
+                String.format(Locale.US, "%.1f", cv.dosSigma),
+                String.format(Locale.US, "%.1f%%", cv.cv * 100)
+            )
+
+            // estilo: 0 = tratamiento (con rayado alterno), 1 = subtotal galera, 2 = global
+            fun drawCvRow(label: String, cv: CvPeso?, estilo: Int, parity: Int) {
+                val fill = when (estilo) { 1 -> subtotFill; 2 -> globalFill; else -> if (parity % 2 == 1) rowAlt else null }
+                if (fill != null) { pFill.color = fill; canvas.drawRect(margin, y, margin + tableW, y + rowH, pFill) }
+                val lblPaint = when (estilo) { 2 -> pWhite; else -> pCellB }
+                val valPaint = when (estilo) { 2 -> pWhite; 1 -> pCellB; else -> pCell }
+                lblPaint.textAlign = Paint.Align.LEFT
+                canvas.drawText(label, margin + 6f, y + 12f, lblPaint)
+                valPaint.textAlign = Paint.Align.CENTER
+                cvVals(cv).forEachIndexed { i, s -> canvas.drawText(s, cvColCenter(i), y + 12f, valPaint) }
+                valPaint.textAlign = Paint.Align.LEFT
+                lblPaint.textAlign = Paint.Align.LEFT
+                // bordes
+                if (estilo == 1) canvas.drawLine(margin, y, margin + tableW, y, pLineG)  // borde superior subtotal
+                if (estilo != 2) {  // el global va sin separadores internos (fondo oscuro)
+                    canvas.drawLine(margin, y + rowH, margin + tableW, y + rowH, pLine)
+                    canvas.drawLine(margin + cvLabelW, y, margin + cvLabelW, y + rowH, pLine)
+                    for (i in 1 until cvCols.size) {
+                        val x = margin + cvLabelW + cvColW * i
+                        canvas.drawLine(x, y, x, y + rowH, pLine)
+                    }
+                }
+                y += rowH
+            }
+
+            // Encabezado de la hoja (mismo estilo que la primera página).
+            canvas.drawText("Coeficiente de variación del peso", margin, y + 14f, pTitle)
+            y += 24f
+            canvas.drawText(
+                "Semana ${semNum.toString().padStart(2, '0')}    ·    Partida ${partida.numero}    ·    Lote ${partida.lote}" +
+                    (if (fechaSem.isNotBlank()) "    ·    Inicio de semana: $fechaSem" else ""),
+                margin, y + 10f, pSub
+            )
+            y += 24f
+            drawCvHeader()
+
+            var parity = 0
+            partida.galeras.forEach { galera ->
+                val corrales = galera.corrales.sortedBy { c ->
+                    c.id.substringAfterLast("-").filter { it.isDigit() }.toIntOrNull() ?: 0
+                }
+                corrales.forEach { c ->
+                    if (c.parcelas.isEmpty()) return@forEach
+                    val cv = Calculadora.cvPesoDeParcelas(c.parcelas, semNum, state.datosPorParcela)
+                    if (asegurar(rowH)) drawCvHeader()
+                    drawCvRow("${galera.id} · ${c.id.substringAfterLast("-")}", cv, 0, parity++)
+                }
+                val cvG = Calculadora.cvPesoDeParcelas(galera.corrales.flatMap { it.parcelas }, semNum, state.datosPorParcela)
+                if (asegurar(rowH)) drawCvHeader()
+                drawCvRow("Subtotal ${galera.nombre}", cvG, 1, parity)
+            }
+            val cvGlobal = Calculadora.cvPesoDeParcelas(
+                partida.galeras.flatMap { it.corrales }.flatMap { it.parcelas }, semNum, state.datosPorParcela
+            )
+            if (asegurar(rowH)) drawCvHeader()
+            drawCvRow("GLOBAL · todo el lote", cvGlobal, 2, parity)
+        }
+
+        canvas.drawText("Flock Tracker", margin, pageH - 14f, pSub)
+        pdf.finishPage(page)
+
+        val dir = exportsDir(context)
+        val numero = partida.numero.filter { it.isLetterOrDigit() || it == '-' }.ifBlank { "lote" }
+        val file = File(dir, "Resumen_Lote_${numero}_S${semNum.toString().padStart(2, '0')}.pdf")
+        // Garantizar el cierre del PdfDocument y la liberación del Bitmap del logo
+        // aunque la escritura falle (recursos nativos).
+        try {
+            FileOutputStream(file).use { pdf.writeTo(it) }
+        } finally {
+            pdf.close()
+            logo?.recycle()
+        }
+        file
+    }
+
+    /** Ancho estándar de columnas (autoSizeColumn no funciona en Android). */
+    private fun ajustarAnchos(sheet: org.apache.poi.ss.usermodel.Sheet, totalCols: Int) {
+        sheet.setColumnWidth(0, 16 * 256)        // primera columna (texto) más ancha
+        for (c in 1..totalCols) sheet.setColumnWidth(c, 12 * 256)
+    }
+
+    @Suppress("unused")  // deshabilitada: el export ahora es solo la hoja Estadística
+    private fun exportGalera(wb: XSSFWorkbook, galera: Galera, state: AppState, styles: Map<String, CellStyle>, opciones: OpcionesExport) {
+        val safeName = galera.nombre.filter { it.isLetterOrDigit() || it == ' ' }.take(31).ifBlank { "Galera ${galera.id}" }
+        val sheet = wb.createSheet(safeName)
+        var rowIdx = 0
+        ajustarAnchos(sheet, 30)
+
+        // Encabezado
+        sheet.createRow(rowIdx++).also { r ->
+            r.createCell(0).apply { setCellValue("Galera: ${galera.nombre}"); setCellStyle(styles["header"]) }
+        }
+        sheet.createRow(rowIdx++) // espacio
+
+        for (corral in galera.corrales) {
+            for (semana in state.semanas) {
+                val semNum = semana.numero
+
+                // Título tratamiento/semana
+                sheet.createRow(rowIdx++).also { r ->
+                    r.createCell(0).apply {
+                        setCellValue("Tratamiento ${corral.id.substringAfterLast("-")}  ·  Semana ${semNum.toString().padStart(2, '0')}")
+                        setCellStyle(styles["subheader"])
+                    }
+                }
+
+                // Cabeceras columnas
+                sheet.createRow(rowIdx++).also { r ->
+                    val headers = listOf("Parcela", "Inicio", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom",
+                        "Total mort", "Saldo", "Prom g/ave", "Peso Total(g)") +
+                            semana.refsActivas.flatMap { listOf("$it ingreso", "$it saldo fin") } +
+                            listOf("Consumo(g)", "Cons g/ave", "Cons Acum(g)", "FCR Sem", "FCR Acum", "GDP Sem", "Mort Acum%", "Ratio") +
+                            (if (opciones.incluirFcrAjustado) listOf("FCR AJ 2.5") else emptyList())
+                    headers.forEachIndexed { i, h ->
+                        r.createCell(i).apply { setCellValue(h); setCellStyle(styles["colHeader"]) }
+                    }
+                }
+
+                for (parcela in corral.parcelas) {
+                    val datosByPar = state.datosPorParcela[parcela.id] ?: emptyMap()
+                    val dato = datosByPar[semNum] ?: DatoParcela(semNum, parcela.id)
+                    val inicio = Calculadora.getSaldoAnterior(semNum, parcela.id, parcela, datosByPar)
+                    val mort = dato.mort.sumOf { it ?: 0 }
+                    val saldo = inicio - mort
+                    
+                    val prom = dato.peso ?: 0.0
+                    val pesoTotal = prom * saldo
+
+                    var totalSem = 0.0; var totalSF = 0.0
+                    for (tipo in semana.refsActivas) {
+                        val saldoAnt = Calculadora.getSaldoAlimRef(semNum, parcela.id, tipo, datosByPar)
+                        val ref = dato.refs[tipo] ?: RefAlimento(tipo)
+                        totalSem += saldoAnt + (ref.ingreso ?: 0.0)
+                        totalSF  += ref.saldoFin ?: 0.0
+                    }
+                    // Alimento en KG → consumo por ave en gramos (× GRAMOS_POR_KG).
+                    val cons = (dato.consAjust ?: 0.0).let { if (it > 0) it else totalSem - totalSF }
+                    val consGave = if (saldo > 0 && cons > 0) cons * Calculadora.GRAMOS_POR_KG / saldo else 0.0
+
+                    // Consumo Acumulado
+                    var consAcumGave = 0.0
+                    var runningSaldo = parcela.inicio
+                    for (sn in 1..semNum) {
+                        val ds = datosByPar[sn]
+                        val s = state.semanas.find { it.numero == sn } ?: continue
+                        val ms = ds?.mort?.sumOf { it ?: 0 } ?: 0
+                        val sf = runningSaldo - ms
+                        if (sf > 0) {
+                            var tsRs = 0.0; var sfRs = 0.0
+                            for (tipo in s.refsActivas) {
+                                tsRs += (datosByPar[sn-1]?.refs?.get(tipo)?.saldoFin ?: 0.0) + (ds?.refs?.get(tipo)?.ingreso ?: 0.0)
+                                sfRs += ds?.refs?.get(tipo)?.saldoFin ?: 0.0
+                            }
+                            val aKg = (ds?.consAjust ?: 0.0).let { if (it > 0) it else tsRs - sfRs }
+                            consAcumGave += if (aKg > 0) aKg * Calculadora.GRAMOS_POR_KG / sf else 0.0
+                        }
+                        runningSaldo = sf
+                    }
+
+                    val prevProm = if (semNum > 1) {
+                        datosByPar[semNum - 1]?.peso ?: 0.0
+                    } else if (parcela.inicio > 0) parcela.pesoInicio / parcela.inicio else 0.0
+                    
+                    val gain = if (semNum == 1) {
+                        prom 
+                    } else if (prom > 0 && prevProm > 0) {
+                        prom - prevProm 
+                    } else 0.0
+
+                    val fcrSem = if (gain > 0 && consGave > 0) consGave / gain else 0.0
+                    val fcrAcum = if (prom > 0 && consAcumGave > 0) consAcumGave / prom else 0.0
+                    
+                    val mortAcum = (1..semNum).sumOf { datosByPar[it]?.mort?.sumOf { m -> m ?: 0 } ?: 0 }
+                    val mortAcumPct = if (parcela.inicio > 0) mortAcum.toDouble() / parcela.inicio else 0.0
+                    
+                    val ratio = if (semNum == 1 && prevProm > 0) prom / prevProm else 0.0
+                    val fcrAdj = if (semNum >= 5 && fcrAcum > 0 && prom > 0) fcrAcum + (2500.0 - prom) / 3200.0 else 0.0
+
+                    val sInt = styles["int"]; val sD1 = styles["dec1"]; val sD3 = styles["dec3"]
+                    val sPct = styles["pct"]; val sTxt = styles["text"]
+                    sheet.createRow(rowIdx++).also { r ->
+                        var ci = 0
+                        r.put(ci++, parcela.id, sTxt)
+                        r.put(ci++, inicio.toDouble(), sInt)
+                        dato.mort.forEach { v -> r.put(ci++, (v ?: 0).toDouble(), sInt) }
+                        r.put(ci++, mort.toDouble(), sInt)
+                        r.put(ci++, saldo.toDouble(), sInt)
+                        r.put(ci++, prom, sD1)
+                        r.put(ci++, pesoTotal, sD1)
+                        for (tipo in semana.refsActivas) {
+                            val ref = dato.refs[tipo] ?: RefAlimento(tipo)
+                            r.put(ci++, ref.ingreso ?: 0.0, sD1)
+                            r.put(ci++, ref.saldoFin ?: 0.0, sD1)
+                        }
+                        r.put(ci++, cons, sD1)
+                        r.put(ci++, consGave, sD1)
+                        r.put(ci++, consAcumGave, sD1)
+                        r.put(ci++, fcrSem, sD3)
+                        r.put(ci++, fcrAcum, sD3)
+                        r.put(ci++, gain / 7.0, sD1)
+                        r.put(ci++, mortAcumPct, sPct)   // fracción → formato 0.0%
+                        if (ratio > 0) r.put(ci++, ratio, sD3) else ci++
+                        if (opciones.incluirFcrAjustado) { if (fcrAdj > 0) r.put(ci++, fcrAdj, sD3) else ci++ }
+                    }
+                }
+                sheet.createRow(rowIdx++) // espacio
+            }
+        }
+
+        // Autosize NO FUNCIONA en Android (requiere AWT)
+        // for (i in 0..20) sheet.autoSizeColumn(i)
+    }
+
+    @Suppress("unused")  // deshabilitada: el export ahora es solo la hoja Estadística
+    private fun exportResumen(wb: XSSFWorkbook, state: AppState, styles: Map<String, CellStyle>, opciones: OpcionesExport) {
+        val sheet = wb.createSheet("Resumen")
+        var rowIdx = 0
+        ajustarAnchos(sheet, 16)
+
+        // Cabeceras dinámicas: las columnas opcionales (CV%, FEP, FCR AJ) sólo aparecen
+        // si se piden; el orden coincide con el de escritura de filas más abajo.
+        val headers = listOf("Galera", "Tratamiento", "Saldo", "Peso g/ave", "Cons g/ave", "Cons Acum g/ave",
+            "FCR sem", "FCR acum", "GDP sem", "GDP lineal", "Mort acum%", "CGR") +
+            (if (opciones.incluirCv) listOf("CV%") else emptyList()) +
+            (if (opciones.incluirFep) listOf("FEP") else emptyList()) +
+            listOf("Ratio") +
+            (if (opciones.incluirFcrAjustado) listOf("FCR AJ 2.5") else emptyList())
+
+        for (semana in state.semanas) {
+            sheet.createRow(rowIdx++).also { r ->
+                r.createCell(0).apply {
+                    setCellValue("Semana ${semana.numero.toString().padStart(2, '0')}")
+                    setCellStyle(styles["header"])
+                }
+            }
+
+            // Cabeceras
+            sheet.createRow(rowIdx++).also { r ->
+                headers.forEachIndexed { i, h ->
+                    r.createCell(i).apply { setCellValue(h); setCellStyle(styles["colHeader"]) }
+                }
+            }
+
+            state.partida?.galeras?.forEach { galera ->
+                galera.corrales.forEach { corral ->
+                    val m = Calculadora.computeMetricasCorral(
+                        corral          = corral,
+                        semNum          = semana.numero,
+                        semana          = semana,
+                        todasSemanas    = state.semanas,
+                        datosPorParcela = state.datosPorParcela
+                    )
+                    val sInt = styles["int"]; val sD1 = styles["dec1"]; val sD3 = styles["dec3"]
+                    val sPct = styles["pct"]; val sTxt = styles["text"]
+                    sheet.createRow(rowIdx++).also { r ->
+                        var c = 0
+                        r.put(c++, galera.nombre, sTxt)
+                        r.put(c++, corral.id.substringAfterLast("-"), sTxt)
+                        r.put(c++, m?.saldo?.toDouble() ?: 0.0, sInt)
+                        r.put(c++, m?.promPeso ?: 0.0, sD1)
+                        r.put(c++, m?.consumoGave ?: 0.0, sD1)
+                        r.put(c++, m?.consumoAcum ?: 0.0, sD1)
+                        r.put(c++, m?.fcrSem ?: 0.0, sD3)
+                        r.put(c++, m?.fcrAcum ?: 0.0, sD3)
+                        r.put(c++, m?.gdpSem ?: 0.0, sD1)
+                        r.put(c++, m?.gdpLineal ?: 0.0, sD1)
+                        r.put(c++, m?.mortAcumPct ?: 0.0, sPct)   // fracción → 0.0%
+                        r.put(c++, m?.cgr ?: 0.0, sD3)
+                        if (opciones.incluirCv)  r.put(c++, m?.cvPeso ?: 0.0, sPct)  // fracción → 0.0%
+                        if (opciones.incluirFep) r.put(c++, m?.fep ?: 0.0, sD1)
+                        if (m?.ratio != null && m.ratio > 0) r.put(c++, m.ratio, sD3) else c++
+                        if (opciones.incluirFcrAjustado) {
+                            if (m?.fcrAdj != null && m.fcrAdj > 0) r.put(c++, m.fcrAdj, sD3) else c++
+                        }
+                    }
+                }
+            }
+            sheet.createRow(rowIdx++)
+        }
+
+        // Autosize NO FUNCIONA en Android (requiere AWT)
+        // for (i in 0..11) sheet.autoSizeColumn(i)
+    }
+
+    private fun exportEstadistica(wb: XSSFWorkbook, state: AppState, styles: Map<String, CellStyle>, opciones: OpcionesExport) {
+        val sheet = wb.createSheet("Estadística")
+        var rowIdx = 0
+        ajustarAnchos(sheet, 18)
+
+        // El orden debe coincidir con el de escritura de filas: 2.5 KG, RATIO, 2 KG, 2.7 KG.
+        val headers = listOf(
+            "BLOQUE", "PARCELA", "SEMANA", "TRATAMIENTO", "REPETICIÓN",
+            "PESO (g)", "CONSUMO SEMANAL (g)", "CONSUMO ACUMULADO (g)",
+            "FCR SEMANAL", "FCR ACUMULADO", "GDP SEMANAL", "GDP LINEAL",
+            "% MORTALIDAD", "% MORTALIDAD ACUMULADA", "RATIO"
+        ) +
+            // FCR ajustado agrupado y ordenado de menor a mayor: 2.0 → 2.5 → 2.7 kg.
+            (if (opciones.incluirFcrAjustado)
+                listOf("FCR AJUSTADO 2 KG", "FCR AJUSTADO 2.5 KG", "FCR AJUSTADO 2.7 KG") else emptyList())
+
+        // Header Row
+        val headerRow = sheet.createRow(rowIdx++)
+        headers.forEachIndexed { i, h ->
+            headerRow.createCell(i).apply {
+                setCellValue(h)
+                setCellStyle(styles["statHeader"])
+            }
+        }
+
+        val partida = state.partida ?: return
+        // Referencias desechadas del cálculo, por semana (uid+sem).
+        val exclPorSem = state.semanas.associate { it.numero to config.refsExcluidas(partida.uid, it.numero) }
+
+        // Mapa para llevar el conteo de repeticiones por tratamiento
+        // key: GaleraId-TratamientoLabel, value: counter
+        val repeticiones = mutableMapOf<String, Int>()
+
+        for (semana in state.semanas) {
+            val semNum = semana.numero
+            
+            for (galera in partida.galeras) {
+                // El Bloque es el número de la galera
+                val bloque = try { galera.id.filter { it.isDigit() }.toInt() } catch(e:Exception) { 0 }
+                
+                for (corral in galera.corrales) {
+                    val tratamiento = corral.id.split("-").last()
+                    
+                    corral.parcelas.forEachIndexed { pIdx, parcela ->
+                        val key = "${galera.id}-${tratamiento}"
+                        // La repetición es el índice de la parcela en el corral (1-based)
+                        val rep = pIdx + 1
+
+                        val datosByPar = state.datosPorParcela[parcela.id] ?: emptyMap()
+                        val d = datosByPar[semNum] ?: DatoParcela(semNum, parcela.id)
+                        
+                        // Cálculos base
+                        val inicioSem = Calculadora.getSaldoAnterior(semNum, parcela.id, parcela, datosByPar)
+                        val mortSem = d.mort.sumOf { it ?: 0 }
+                        val saldoFin = inicioSem - mortSem
+                        val pesoGave = d.peso ?: 0.0
+
+                        // Consumo Semanal
+                        var tsR = 0.0; var sfR = 0.0
+                        val exclSem = exclPorSem[semNum] ?: emptySet()
+                        for (tipo in semana.refsActivas) {
+                            if (tipo in exclSem) continue   // referencia desechada del cálculo (esa semana)
+                            tsR += Calculadora.getSaldoAlimRef(semNum, parcela.id, tipo, datosByPar) + (d.refs[tipo]?.ingreso ?: 0.0)
+                            sfR += d.refs[tipo]?.saldoFin ?: 0.0
+                        }
+                        // Alimento en KG → consumo por ave en gramos (× GRAMOS_POR_KG).
+                        val alimKg = (d.consAjust?.takeIf { it >= 0.0 }) ?: (tsR - sfR)
+                        val consGaveSem = if (saldoFin > 0 && alimKg > 0) alimKg * Calculadora.GRAMOS_POR_KG / saldoFin else 0.0
+
+                        // Consumo Acumulado
+                        var consAcumGave = 0.0
+                        var runningSaldo = parcela.inicio
+                        for (sn in 1..semNum) {
+                            val ds = datosByPar[sn]
+                            val s = state.semanas.find { it.numero == sn } ?: continue
+                            val ms = ds?.mort?.sumOf { it ?: 0 } ?: 0
+                            val sf = runningSaldo - ms
+                            if (sf > 0) {
+                                var tsRs = 0.0; var sfRs = 0.0
+                                val exclSn = exclPorSem[sn] ?: emptySet()
+                                for (tipo in s.refsActivas) {
+                                    if (tipo in exclSn) continue   // referencia desechada del cálculo (esa semana)
+                                    tsRs += (datosByPar[sn-1]?.refs?.get(tipo)?.saldoFin ?: 0.0) + (ds?.refs?.get(tipo)?.ingreso ?: 0.0)
+                                    sfRs += ds?.refs?.get(tipo)?.saldoFin ?: 0.0
+                                }
+                                val aKg = (ds?.consAjust?.takeIf { it >= 0.0 }) ?: (tsRs - sfRs)
+                                consAcumGave += if (aKg > 0) aKg * Calculadora.GRAMOS_POR_KG / sf else 0.0
+                            }
+                            runningSaldo = sf
+                        }
+
+                        // GDP y FCR
+                        val gainSem = if (semNum == 1) {
+                            pesoGave
+                        } else {
+                            val prevPeso = if (semNum > 1) datosByPar[semNum - 1]?.peso ?: 0.0 else 0.0
+                            if (pesoGave > 0 && prevPeso > 0) pesoGave - prevPeso else 0.0
+                        }
+
+                        val fcrSem = if (gainSem > 0 && consGaveSem > 0) consGaveSem / gainSem else 0.0
+                        val fcrAcum = if (pesoGave > 0 && consAcumGave > 0) consAcumGave / pesoGave else 0.0
+                        
+                        val gdpSem = gainSem / 7.0
+                        val gdpLin = if (pesoGave > 0) pesoGave / (semNum * 7.0) else 0.0
+                        
+                        val mortPct = if (inicioSem > 0) (mortSem.toDouble() / inicioSem) else 0.0
+                        
+                        var totMortAcum = 0
+                        for (sn in 1..semNum) totMortAcum += (datosByPar[sn]?.mort?.sumOf { it ?: 0 } ?: 0)
+                        val mortAcumPct = if (parcela.inicio > 0) (totMortAcum.toDouble() / parcela.inicio) else 0.0
+                        
+                        // El ratio: Peso Presente / Peso Pasado (o inicial en W1)
+                        // Según requerimiento, solo se muestra en la Semana 1
+                        val actualPrevPeso = if (semNum == 1) {
+                            if (parcela.inicio > 0) parcela.pesoInicio / parcela.inicio else 0.0
+                        } else {
+                            datosByPar[semNum - 1]?.peso ?: 0.0
+                        }
+                        
+                        val ratio = if (semNum == 1 && actualPrevPeso > 0) pesoGave / actualPrevPeso else 0.0
+
+                        // FCR Ajustado (Standard Factor 3.2 kg o 3200g)
+                        // Solo se calculan a partir de la semana 5
+                        val fcrAdj25 = if (semNum >= 5 && fcrAcum > 0 && pesoGave > 0) fcrAcum + (2500.0 - pesoGave) / 3200.0 else 0.0
+                        val fcrAdj20 = if (semNum >= 5 && fcrAcum > 0 && pesoGave > 0) fcrAcum + (2000.0 - pesoGave) / 3200.0 else 0.0
+                        val fcrAdj27 = if (semNum >= 5 && fcrAcum > 0 && pesoGave > 0) fcrAcum + (2700.0 - pesoGave) / 3200.0 else 0.0
+
+                        val sInt = styles["int"]; val sD1 = styles["dec1"]; val sD3 = styles["dec3"]
+                        val sPct = styles["pct"]; val sTxt = styles["text"]
+                        val row = sheet.createRow(rowIdx++)
+                        var c = 0
+                        row.put(c++, bloque.toDouble(), sInt)
+                        row.put(c++, parcela.id, sTxt)
+                        row.put(c++, semNum.toDouble(), sInt)
+                        row.put(c++, tratamiento, sTxt)
+                        row.put(c++, rep.toDouble(), sInt)
+                        row.put(c++, pesoGave, sD1)
+                        row.put(c++, consGaveSem, sD1)
+                        row.put(c++, consAcumGave, sD1)
+                        row.put(c++, fcrSem, sD3)
+                        row.put(c++, fcrAcum, sD3)
+                        row.put(c++, gdpSem, sD1)
+                        row.put(c++, gdpLin, sD1)
+                        row.put(c++, mortPct, sPct)        // fracción → 0.0%
+                        row.put(c++, mortAcumPct, sPct)    // fracción → 0.0%
+
+                        // Celdas condicionadas: si el valor es 0.0 y no corresponde a la semana, se dejan vacías.
+                        // Las columnas de FCR Ajustado son opcionales (no existen en la planilla).
+                        if (ratio > 0) row.put(c++, ratio, sD3) else c++
+                        // FCR ajustado de menor a mayor: 2.0 → 2.5 → 2.7 kg.
+                        if (opciones.incluirFcrAjustado) {
+                            if (fcrAdj20 > 0) row.put(c++, fcrAdj20, sD3) else c++
+                            if (fcrAdj25 > 0) row.put(c++, fcrAdj25, sD3) else c++
+                            if (fcrAdj27 > 0) row.put(c++, fcrAdj27, sD3) else c++
+                        }
+                    }
+                }
+            }
+        }
+
+        // Formatear como Tabla
+        try {
+            val lastRow = rowIdx - 1
+            val lastCol = headers.size - 1
+            if (lastRow > 0) {
+                // Freezar primera fila
+                sheet.createFreezePane(0, 1)
+                
+                val area = wb.creationHelper.createAreaReference(
+                    org.apache.poi.ss.util.CellReference(0, 0),
+                    org.apache.poi.ss.util.CellReference(lastRow, lastCol)
+                )
+                
+                val table = (sheet as XSSFSheet).createTable(area)
+                table.name = "TablaEstadistica"
+                table.displayName = "TablaEstadistica"
+                
+                val ctTable = table.getCTTable()
+                
+                // 1. Estilo
+                val style = ctTable.addNewTableStyleInfo()
+                style.name = "TableStyleMedium2"
+                style.showRowStripes = true
+                
+                // 2. AutoFiltro
+                ctTable.addNewAutoFilter().ref = area.formatAsString()
+                
+                // 3. NO usar addNewTableColumns (ya existen por createTable)
+                // En su lugar, configuramos los nombres de las columnas existentes
+                val ctColumns = ctTable.tableColumns
+                for (i in 0 until ctColumns.count.toInt()) {
+                    val col = ctColumns.getTableColumnArray(i)
+                    // Usamos el nombre del encabezado pero sanitizado para el XML
+                    col.name = headers[i].replace(Regex("[^A-Za-z0-9]"), "_")
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * Copia el APK instalado de la app a la cache y devuelve el archivo, listo para
+     * compartir (WhatsApp, Bluetooth, Drive, etc.).
+     */
+    suspend fun compartirApk(context: Context): File = withContext(Dispatchers.IO) {
+        val origen = File(context.applicationInfo.sourceDir)
+        val dir = exportsDir(context)
+        val version = try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        } catch (e: Exception) { null }
+        val nombre = "FlockTracker" + (version?.let { "_v$it" } ?: "") + ".apk"
+        val dest = File(dir, nombre)
+        origen.copyTo(dest, overwrite = true)
+        dest
+    }
+
+    /** Carpeta de exportaciones en cache. La limpia de archivos viejos (>24 h) para no
+     *  acumular (incluida la copia del APK), conservando lo recién generado. */
+    private fun exportsDir(context: Context): File {
+        val dir = File(context.cacheDir, "exports").also { it.mkdirs() }
+        val limite = System.currentTimeMillis() - 24L * 60 * 60 * 1000
+        dir.listFiles()?.forEach { if (it.isFile && it.lastModified() < limite) it.delete() }
+        return dir
+    }
+
+    fun shareFile(context: Context, file: File) {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val mime = when {
+            file.name.endsWith(".json") -> "application/json"
+            // .davi se entrega como octet-stream para que el intent-filter de la app
+            // lo capture al abrirlo desde WhatsApp/Archivos.
+            file.name.endsWith(".davi") -> "application/octet-stream"
+            file.name.endsWith(".apk") -> "application/vnd.android.package-archive"
+            file.name.endsWith(".pdf") -> "application/pdf"
+            else -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mime
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        // FLAG_ACTIVITY_NEW_TASK por si el contexto no es una Activity; manejar la
+        // ausencia de apps capaces de compartir el archivo.
+        val chooser = Intent.createChooser(intent, "Compartir").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(chooser)
+        } catch (e: android.content.ActivityNotFoundException) {
+            android.widget.Toast.makeText(
+                context, "No hay una app para compartir este archivo", android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    // ── JSON Export / Import ─────────────────────────────────────
+
+    /**
+     * Exporta el lote activo completo (estructura + semanas + datos digitados) como
+     * un archivo .davi. Al abrirlo desde WhatsApp/Archivos, la app lo reconoce y
+     * restaura el lote entero.
+     */
+    suspend fun exportarLote(context: Context): File = withContext(Dispatchers.IO) {
+        val state = repo.cargarEstado()
+        val partida = state.partida ?: error("No hay partida activa")
+
+        val dump = BackupDump(
+            version = 1,
+            exportedAt = System.currentTimeMillis(),
+            partida = partida,
+            semanas = state.semanas,
+            datosPorParcela = state.datosPorParcela
+        )
+        val json = com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(dump)
+
+        val dir = exportsDir(context)
+        val safe = partida.numero.ifBlank { "partida" }.filter { it.isLetterOrDigit() || it == '-' }
+        val file = File(dir, "Lote_${safe}.davi")
+        file.writeText(json)
+        file
+    }
+
+    /** True si el JSON corresponde a un BACKUP COMPLETO de lote (no a una distribución). */
+    fun esBackupCompleto(json: String): Boolean = try {
+        val root = com.google.gson.JsonParser.parseString(json).asJsonObject
+        (root.has("version") && root.has("datosPorParcela")) ||
+            (root.has("partida") && root.has("semanas"))
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Lee el UID del lote dentro de un JSON de backup (vacío si no lo tiene). */
+    fun uidDeBackup(json: String): String = try {
+        com.google.gson.JsonParser.parseString(json).asJsonObject
+            .getAsJsonObject("partida")?.get("uid")?.asString ?: ""
+    } catch (e: Exception) {
+        ""
+    }
+
+    /**
+     * Importa un backup completo desde su contenido JSON (ya leído). Detecta el
+     * formato (interno o experimental) y restaura el lote. Devuelve el id nuevo.
+     *
+     * @param comoCopia si true, fuerza un UID nuevo y un número con sufijo de copia
+     *        (3580 → 3580-C2). Si false, importa con su número salvo que ya exista,
+     *        en cuyo caso también se genera una copia para no violar la unicidad.
+     */
+    suspend fun importarDesdeJson(json: String, comoCopia: Boolean = false): Result<Long> = withContext(Dispatchers.IO) {
+        try {
+            val jsonRoot = com.google.gson.JsonParser.parseString(json).asJsonObject
+            when {
+                jsonRoot.has("version") && jsonRoot.has("datosPorParcela") -> importarFormatoBackup(json, comoCopia)
+                jsonRoot.has("partida") && jsonRoot.has("semanas")         -> importarFormatoExperimental(json)
+                else -> Result.failure(IllegalArgumentException("Formato no reconocido"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun importarFormatoBackup(json: String, comoCopia: Boolean = false): Result<Long> {
+        val dump = com.google.gson.Gson().fromJson(json, BackupDump::class.java)
+            ?: return Result.failure(IllegalArgumentException("JSON de backup inválido"))
+
+        val original = dump.partida ?: return Result.failure(IllegalArgumentException("No hay partida"))
+
+        // Resolver número único y UID según si es copia o importación directa.
+        val numeroFinal = if (comoCopia || repo.existeOtraPartidaConNumero(original.numero, -1L))
+            repo.generarNumeroCopia(original.numero)
+        else original.numero
+        val uidFinal = if (comoCopia) java.util.UUID.randomUUID().toString()
+            else original.uid.ifBlank { java.util.UUID.randomUUID().toString() }
+
+        val partida = original.copy(id = 0L, numero = numeroFinal, uid = uidFinal)
+        val newId = repo.guardarPartida(partida)
+
+        // Si algo falla a media importación (JSON incompleto, campos nulos de Gson, etc.)
+        // borramos el lote recién creado para no dejar un lote fantasma vacío/parcial.
+        try {
+            dump.semanas.forEach { sem -> repo.upsertSemana(sem) }
+            dump.datosPorParcela.values.forEach { porSem ->
+                porSem.values.forEach { d ->
+                    repo.savePeso(d.semanaNumero, d.parcelaId, d.peso, d.pesos)
+                    repo.saveMortalidad(d.semanaNumero, d.parcelaId, d.mort)
+                    if (d.consAjust != null) repo.saveConsAjust(d.semanaNumero, d.parcelaId, d.consAjust)
+                    d.refs.forEach { (tipo, ref) ->
+                        repo.saveRefAlimento(d.semanaNumero, d.parcelaId, tipo, ref.ingreso, ref.saldoFin)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            repo.borrarFisicamente(newId)
+            return Result.failure(e)
+        }
+        return Result.success(newId)
+    }
+
+    private suspend fun importarFormatoExperimental(json: String): Result<Long> {
+        val root = com.google.gson.Gson().fromJson(json, ExpRoot::class.java)
+            ?: return Result.failure(IllegalArgumentException("JSON experimental inválido"))
+
+        val p = root.partida
+        val domainPartida = Partida(
+            numero = p.numero,
+            lote = p.lote,
+            edad = p.edad,
+            fechaInicio = p.fechaInicio,
+            galeras = p.galeras.map { g ->
+                Galera(
+                    id = g.id,
+                    nombre = g.nombre,
+                    corrales = g.corrales.map { k ->
+                        Corral(
+                            id = k.id,
+                            galeraId = g.id,
+                            parcelas = k.parcelas.map { par ->
+                                Parcela(par.id, k.id, par.inicio, par.pesoInicio)
+                            }
+                        )
+                    }
+                )
+            }
+        )
+
+        val newId = repo.guardarPartida(domainPartida)
+
+        try {
+            root.semanas.forEach { s ->
+                repo.upsertSemana(Semana(s.numero, s.fechaInicio, s.fechaFin, s.refs))
+
+                // Recorrer el mapa anidado: Galera -> Corral -> Parcela -> Datos
+                s.datos.values.forEach { corralesMap ->
+                    corralesMap.values.forEach { parcelasMap ->
+                        parcelasMap.forEach { (pId, d) ->
+                            repo.savePeso(s.numero, pId, d.peso)
+                            repo.saveMortalidad(s.numero, pId, d.mort)
+                            if (d.consAjust != null) repo.saveConsAjust(s.numero, pId, d.consAjust)
+                            d.refs.forEach { (tipo, r) ->
+                                repo.saveRefAlimento(s.numero, pId, tipo, r.ingreso, r.saldoFin)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            repo.borrarFisicamente(newId)
+            return Result.failure(e)
+        }
+
+        return Result.success(newId)
+    }
+
+    // ── DTOs para el formato experimental ────────────────────────
+
+    private data class ExpRoot(val partida: ExpPartida, val semanas: List<ExpSemana>)
+    private data class ExpPartida(val numero: String, val lote: String, val edad: String, val fechaInicio: String, val galeras: List<ExpGalera>)
+    private data class ExpGalera(val id: String, val nombre: String, val corrales: List<ExpCorral>)
+    private data class ExpCorral(val id: String, val parcelas: List<ExpParcela>)
+    private data class ExpParcela(val id: String, val inicio: Int, val pesoInicio: Double)
+    private data class ExpSemana(val numero: Int, val fechaInicio: String, val fechaFin: String, val refs: List<String>, val datos: Map<String, Map<String, Map<String, ExpDato>>>)
+    private data class ExpDato(val mort: List<Int?>, val peso: Double?, val refs: Map<String, ExpRef>, val consAjust: Double?)
+    private data class ExpRef(val ingreso: Double?, val saldoFin: Double?)
+
+    private data class BackupDump(
+        val version: Int,
+        val exportedAt: Long,
+        val partida: Partida?,
+        val semanas: List<Semana>,
+        val datosPorParcela: Map<String, Map<Int, DatoParcela>>
+    )
+
+    // Helpers para escribir celdas con estilo aplicado.
+    private fun org.apache.poi.ss.usermodel.Row.put(idx: Int, value: Double, style: CellStyle?) {
+        createCell(idx).apply { setCellValue(value); if (style != null) cellStyle = style }
+    }
+    private fun org.apache.poi.ss.usermodel.Row.put(idx: Int, value: String, style: CellStyle?) {
+        createCell(idx).apply { setCellValue(value); if (style != null) cellStyle = style }
+    }
+
+    private fun createStyles(wb: XSSFWorkbook): Map<String, CellStyle> {
+        val fmt = wb.createDataFormat()
+
+        val headerFont = wb.createFont().apply {
+            bold = true; fontHeightInPoints = 12.toShort()
+        }
+        val colFont = wb.createFont().apply { bold = true; color = IndexedColors.WHITE.index }
+
+        val header = wb.createCellStyle().apply { setFont(headerFont) }
+        val subheader = wb.createCellStyle().apply {
+            setFont(wb.createFont().apply { bold = true; fontHeightInPoints = 11.toShort(); color = IndexedColors.WHITE.index })
+            fillForegroundColor = IndexedColors.GREY_50_PERCENT.index
+            fillPattern = FillPatternType.SOLID_FOREGROUND
+        }
+        // Encabezado de columnas: verde de marca, texto blanco, centrado, con borde.
+        val colHeader = wb.createCellStyle().apply {
+            setFont(colFont)
+            fillForegroundColor = IndexedColors.GREEN.index
+            fillPattern = FillPatternType.SOLID_FOREGROUND
+            alignment = HorizontalAlignment.CENTER
+            verticalAlignment = VerticalAlignment.CENTER
+            wrapText = true
+            borderBottom = BorderStyle.THIN
+        }
+        val statHeader = wb.createCellStyle().apply {
+            setFont(wb.createFont().apply { bold = true; color = IndexedColors.WHITE.index })
+            fillForegroundColor = IndexedColors.GREEN.index
+            fillPattern = FillPatternType.SOLID_FOREGROUND
+            alignment = HorizontalAlignment.CENTER
+            verticalAlignment = VerticalAlignment.CENTER
+            wrapText = true
+        }
+
+        // ── Estilos numéricos por tipo de dato ──
+        fun numStyle(pattern: String) = wb.createCellStyle().apply {
+            dataFormat = fmt.getFormat(pattern)
+            alignment = HorizontalAlignment.CENTER
+        }
+        val intStyle = numStyle("0")        // enteros (aves, saldo)
+        val dec1     = numStyle("0.0")      // pesos, consumo, GDP
+        val dec3     = numStyle("0.000")    // FCR
+        val pct      = numStyle("0.0%")     // mortalidad / CV (se escribe la fracción)
+        val textC    = wb.createCellStyle().apply { alignment = HorizontalAlignment.CENTER }
+
+        return mapOf(
+            "header" to header,
+            "subheader" to subheader,
+            "colHeader" to colHeader,
+            "statHeader" to statHeader,
+            "int" to intStyle,
+            "dec1" to dec1,
+            "dec3" to dec3,
+            "pct" to pct,
+            "text" to textC
+        )
+    }
+}

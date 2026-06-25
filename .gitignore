@@ -1,0 +1,27 @@
+# Volcados de memoria (heap dumps) de crashes OOM
+*.hprof
+
+# Carpetas de build generadas
+/build
+/app/build
+
+# Gradle
+/.gradle
+.kotlin
+
+# IntelliJ IDEA / Android Studio
+# Se ignora la carpeta completa salvo los archivos que el equipo quiera versionar.
+# Para versionar uno concreto, descomenta y ajusta, p. ej.:
+#   !/.idea/codeStyles
+#   !/.idea/runConfigurations
+/.idea
+
+# Configuración local del entorno (rutas del SDK, claves, etc.)
+local.properties
+
+# Claves de firma (NUNCA subir a un repositorio)
+*.jks
+*.keystore
+
+# Estado local de Claude Code / herramientas del entorno
+/.claude

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Propuestas v3 · Lotes densos</title>
+<style>
+  :root{
+    --green:#2E914E; --green-dark:#1B6133; --green-50:#ECF6EF; --green-100:#CFE8D7;
+    --n0:#fff; --n50:#F8FAFC; --n100:#F1F5F9; --n200:#E2E8F0; --n300:#CBD5E0;
+    --n400:#94A3B8; --n500:#64748B; --n600:#475569; --n800:#1E293B;
+  }
+  *{box-sizing:border-box;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  body{margin:0;background:var(--n100);color:var(--n800);padding:24px 12px 60px}
+  h1{font-size:20px;text-align:center;color:var(--green-dark);margin:0 0 4px}
+  .sub{text-align:center;color:var(--n500);font-size:13px;margin-bottom:24px}
+  .grid{display:flex;flex-wrap:wrap;gap:20px;justify-content:center;align-items:flex-start}
+  .phone{width:340px;background:var(--n50);border:1px solid var(--n200);border-radius:24px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)}
+  .topbar{background:linear-gradient(180deg,var(--green),var(--green-dark));color:#fff;padding:14px 16px}
+  .topbar .t{font-weight:800;font-size:15px}.topbar .s{font-size:11px;opacity:.85}
+  .body{padding:16px}
+  .opt{display:inline-block;background:var(--green-100);color:var(--green-dark);font-weight:800;font-size:11px;padding:4px 10px;border-radius:999px;margin-bottom:10px}
+  .panel{background:#fff;border:1px solid var(--n200);border-radius:14px;padding:12px}
+  .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .lbl{font-size:11px;font-weight:800;color:var(--n500);letter-spacing:.4px;text-transform:uppercase}
+  .count{background:var(--green-50);color:var(--green-dark);font-weight:800;font-size:11px;border-radius:999px;padding:2px 9px}
+  .addrow{display:flex;gap:8px;margin-top:10px}
+  .addrow input{flex:1;border:1px solid var(--n200);background:var(--n50);border-radius:10px;padding:9px 11px;font-size:14px;outline:none}
+  .addrow input:focus{border-color:var(--green);background:#fff}
+  .addbtn{width:42px;border:none;border-radius:10px;background:var(--green);color:#fff;font-size:20px;cursor:pointer}
+  .addbtn:disabled{background:var(--n200);color:var(--n400)}
+  .hint{font-size:11px;color:var(--n400);margin-top:8px}
+  .x{border:none;background:transparent;color:var(--n400);cursor:pointer;font-size:14px;padding:0;line-height:1}
+  .x:hover{color:var(--n600)}
+  .note{max-width:760px;margin:28px auto 0;background:#fff;border:1px solid var(--n200);border-radius:14px;padding:16px;font-size:13px;color:var(--n600);line-height:1.6}
+  .note b{color:var(--n800)}
+
+  /* P1 — grid 3 columnas */
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .cell{border:1px solid var(--n200);border-radius:10px;padding:6px 6px 5px;background:#fff;text-align:center;position:relative}
+  .cell .cx{position:absolute;top:2px;right:4px}
+  .cell .nm{font-weight:800;font-size:13px;color:var(--n800);line-height:1.1}
+  .cell .ed{display:inline-block;margin-top:3px;background:var(--green-50);border:1px solid var(--green-100);border-radius:6px;padding:1px 6px;font-size:10px;font-weight:800;color:var(--green-dark);cursor:pointer}
+
+  /* P2 — grid 2 columnas, una línea */
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .pill{display:flex;align-items:center;gap:6px;border:1px solid var(--n200);border-radius:10px;padding:5px 6px 5px 9px;background:#fff}
+  .pill .nm{font-weight:800;font-size:13px;flex:1}
+  .pill .ed{background:var(--green-50);border:1px solid var(--green-100);border-radius:6px;padding:1px 6px;font-size:10px;font-weight:800;color:var(--green-dark);cursor:pointer;white-space:nowrap}
+
+  /* P3 — tabla densa */
+  table{width:100%;border-collapse:collapse}
+  thead th{font-size:9px;text-transform:uppercase;letter-spacing:.4px;color:var(--n500);text-align:left;padding:3px 6px;border-bottom:1px solid var(--n200)}
+  tbody td{padding:3px 6px;border-bottom:1px solid var(--n100);font-size:13px}
+  tbody td.nm{font-weight:700}
+  .edin{width:48px;border:1px solid var(--n200);border-radius:6px;padding:3px;text-align:center;font-weight:700;color:var(--green-dark);outline:none;font-size:12px}
+  .edin:focus{border-color:var(--green)}
+
+  /* P4 — tabla doble (2 lotes por fila) */
+  .dbl td{padding:3px 4px;border-bottom:1px solid var(--n100);font-size:12px}
+  .dbl .nm{font-weight:700}
+  .dbl .sep{width:8px}
+</style>
+</head>
+<body>
+  <h1>Lotes densos · 4 propuestas (mínimo espacio)</h1>
+  <div class="sub">Pensadas para nombres cortos. Todas estables (en Compose = filas en columnas / tabla).</div>
+
+  <div class="grid">
+
+    <!-- P1 -->
+    <div class="phone"><div class="topbar"><div class="t">Nuevo lote</div><div class="s">Identificación · Paso 1 de 4</div></div>
+      <div class="body"><span class="opt">P1 · Cuadrícula 3 columnas</span>
+        <div class="panel">
+          <div class="head"><span class="lbl">Lotes</span><span class="count" id="c1">0</span></div>
+          <div class="g3" id="l1"></div>
+          <div class="addrow"><input id="i1" placeholder="Agregar lote…" oninput="tog(1)" onkeydown="k(event,1)"><button class="addbtn" id="b1" disabled onclick="add(1)">+</button></div>
+          <div class="hint">3 por fila. Toca la edad para cambiarla.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- P2 -->
+    <div class="phone"><div class="topbar"><div class="t">Nuevo lote</div><div class="s">Identificación · Paso 1 de 4</div></div>
+      <div class="body"><span class="opt">P2 · Píldoras 2 columnas (1 línea)</span>
+        <div class="panel">
+          <div class="head"><span class="lbl">Lotes</span><span class="count" id="c2">0</span></div>
+          <div class="g2" id="l2"></div>
+          <div class="addrow"><input id="i2" placeholder="Agregar lote…" oninput="tog(2)" onkeydown="k(event,2)"><button class="addbtn" id="b2" disabled onclick="add(2)">+</button></div>
+          <div class="hint">2 por fila, cada lote en una sola línea.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- P3 -->
+    <div class="phone"><div class="topbar"><div class="t">Nuevo lote</div><div class="s">Identificación · Paso 1 de 4</div></div>
+      <div class="body"><span class="opt">P3 · Tabla densa</span>
+        <div class="panel">
+          <div class="head"><span class="lbl">Lotes</span><span class="count" id="c3">0</span></div>
+          <table><thead><tr><th>Lote</th><th>Edad (d)</th><th></th></tr></thead><tbody id="l3"></tbody></table>
+          <div class="addrow"><input id="i3" placeholder="Agregar lote…" oninput="tog(3)" onkeydown="k(event,3)"><button class="addbtn" id="b3" disabled onclick="add(3)">+</button></div>
+          <div class="hint">Filas finas; edad editable en la celda.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- P4 -->
+    <div class="phone"><div class="topbar"><div class="t">Nuevo lote</div><div class="s">Identificación · Paso 1 de 4</div></div>
+      <div class="body"><span class="opt">P4 · Tabla doble (2 lotes por fila)</span>
+        <div class="panel">
+          <div class="head"><span class="lbl">Lotes</span><span class="count" id="c4">0</span></div>
+          <table class="dbl"><thead><tr><th>Lote</th><th>Edad</th><th></th><th class="sep"></th><th>Lote</th><th>Edad</th><th></th></tr></thead><tbody id="l4"></tbody></table>
+          <div class="addrow"><input id="i4" placeholder="Agregar lote…" oninput="tog(4)" onkeydown="k(event,4)"><button class="addbtn" id="b4" disabled onclick="add(4)">+</button></div>
+          <div class="hint">La más compacta: empareja 2 lotes por fila.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <b>Densidad (de mayor a menor ahorro de espacio):</b>
+    <b>P4 tabla doble</b> ≥ <b>P1 grid-3</b> > <b>P3 tabla</b> ≈ <b>P2 grid-2</b>.
+    <br><b>P1/P2</b> conservan el aire de “chips”. <b>P3/P4</b> son tipo planilla (máxima densidad y alineación).
+    En Compose se implementan con <b>filas agrupadas (chunked) o tabla</b> — 100% estable, sin FlowRow.
+    <br>Dime cuál prefieres y la dejo en la app.
+  </div>
+
+<script>
+  const D={1:seed(),2:seed(),3:seed(),4:seed()};
+  function seed(){return [{n:'180',e:50},{n:'450',e:28},{n:'A12',e:7}];}
+  function tog(p){document.getElementById('b'+p).disabled=!document.getElementById('i'+p).value.trim();}
+  function k(e,p){if(e.key==='Enter')add(p);}
+  function add(p){const i=document.getElementById('i'+p);const v=i.value.trim();if(!v)return;D[p].push({n:v,e:0});i.value='';tog(p);render(p);}
+  function rm(p,x){D[p].splice(x,1);render(p);}
+  function setE(p,x,v){D[p][x].e=Math.max(0,parseInt(v)||0);render(p);}
+  function ask(p,x){const v=prompt('Edad (días):',D[p][x].e);if(v!==null)setE(p,x,v);}
+
+  function render(p){
+    document.getElementById('c'+p).textContent=D[p].length;
+    const L=D[p],h=document.getElementById('l'+p);
+    if(p===1){
+      h.innerHTML=L.map((x,i)=>`<div class="cell"><button class="x cx" onclick="rm(1,${i})">✕</button>
+        <div class="nm">${x.n}</div><span class="ed" onclick="ask(1,${i})">${x.e} d</span></div>`).join('');
+    }else if(p===2){
+      h.innerHTML=L.map((x,i)=>`<div class="pill"><span class="nm">${x.n}</span>
+        <span class="ed" onclick="ask(2,${i})">${x.e} d</span><button class="x" onclick="rm(2,${i})">✕</button></div>`).join('');
+    }else if(p===3){
+      h.innerHTML=L.map((x,i)=>`<tr><td class="nm">${x.n}</td>
+        <td><input class="edin" type="number" min="0" value="${x.e}" onchange="setE(3,${i},this.value)"></td>
+        <td style="text-align:right"><button class="x" onclick="rm(3,${i})">✕</button></td></tr>`).join('');
+    }else{
+      let rows='';
+      for(let i=0;i<L.length;i+=2){
+        const a=L[i],b=L[i+1];
+        rows+=`<tr>
+          <td class="nm">${a.n}</td><td><input class="edin" type="number" min="0" value="${a.e}" onchange="setE(4,${i},this.value)"></td><td><button class="x" onclick="rm(4,${i})">✕</button></td>
+          <td class="sep"></td>
+          ${b?`<td class="nm">${b.n}</td><td><input class="edin" type="number" min="0" value="${b.e}" onchange="setE(4,${i+1},this.value)"></td><td><button class="x" onclick="rm(4,${i+1})">✕</button></td>`:`<td></td><td></td><td></td>`}
+        </tr>`;
+      }
+      h.innerHTML=rows;
+    }
+  }
+  [1,2,3,4].forEach(render);
+</script>
+</body>
+</html>

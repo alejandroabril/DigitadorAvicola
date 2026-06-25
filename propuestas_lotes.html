@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Propuestas · Digitar lotes y edades</title>
+<style>
+  :root{
+    /* Design system Cargill (igual que Color.kt) */
+    --green:        #2E914E;  /* Primary */
+    --green-dark:   #1B6133;  /* Green700 / texto verde */
+    --green-900:    #0C331B;
+    --green-50:     #ECF6EF;
+    --green-100:    #CFE8D7;
+    --n0:#FFFFFF; --n50:#F8FAFC; --n100:#F1F5F9; --n200:#E2E8F0;
+    --n300:#CBD5E0; --n400:#94A3B8; --n500:#64748B; --n600:#475569;
+    --n800:#1E293B; --n900:#0F172A;
+  }
+  *{box-sizing:border-box;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  body{margin:0;background:var(--n100);color:var(--n800);padding:24px 12px 60px}
+  h1{font-size:20px;text-align:center;color:var(--green-900);margin:0 0 4px}
+  .sub{text-align:center;color:var(--n500);font-size:13px;margin-bottom:24px}
+  .grid{display:flex;flex-wrap:wrap;gap:20px;justify-content:center}
+
+  .phone{width:340px;background:var(--n50);border:1px solid var(--n200);border-radius:24px;
+         overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)}
+  .topbar{background:linear-gradient(180deg,var(--green),var(--green-dark));color:#fff;padding:16px}
+  .topbar .t{font-weight:800;font-size:16px}
+  .topbar .s{font-size:11px;opacity:.85}
+  .body{padding:16px}
+  .opt-label{display:inline-block;background:var(--green-100);color:var(--green-dark);
+             font-weight:800;font-size:11px;padding:4px 10px;border-radius:999px;margin-bottom:12px}
+
+  .card{background:#fff;border:1px solid var(--n200);border-radius:14px;padding:14px;margin-bottom:8px}
+  .card h3{margin:0 0 10px;font-size:13px;color:var(--green-dark);font-weight:800;letter-spacing:.3px}
+  label{font-size:11px;color:var(--n500);display:block;margin-bottom:4px}
+  input{width:100%;border:1px solid var(--n200);background:var(--n50);border-radius:10px;
+        padding:10px;font-size:14px;color:var(--n800);outline:none}
+  input:focus{border-color:var(--green);background:#fff}
+  .num{width:64px;text-align:center}
+
+  .btn{background:var(--green);color:#fff;border:none;border-radius:10px;padding:11px 14px;
+       font-weight:700;font-size:13px;cursor:pointer;width:100%}
+  .btn.ghost{background:transparent;color:var(--green-dark);border:1px dashed var(--green);}
+  .icon-btn{background:var(--n100);border:none;border-radius:8px;width:34px;height:38px;
+            cursor:pointer;color:var(--n500);font-size:15px}
+  .icon-btn:hover{background:#FEE2E2;color:#B91C1C}
+
+  /* A: filas */
+  .row{display:flex;gap:8px;align-items:flex-end;margin-bottom:8px}
+  .row .f1{flex:1}
+  .hint{font-size:11px;color:var(--n400);margin-top:6px}
+  .warn{font-size:12px;color:#B45309;background:#FEF3C7;border-radius:8px;padding:6px 8px;margin-top:8px}
+  .ok{font-size:12px;color:var(--green-dark);background:var(--green-50);border-radius:8px;padding:6px 8px;margin-top:8px}
+
+  /* B: stepper */
+  .stepper{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+  .stepper button{width:36px;height:36px;border-radius:10px;border:1px solid var(--n200);
+                  background:#fff;font-size:18px;cursor:pointer;color:var(--green-dark)}
+  .stepper .val{font-size:20px;font-weight:800;min-width:24px;text-align:center}
+
+  /* C: chips */
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .chip{display:flex;align-items:center;gap:8px;background:var(--green-50);
+        border:1px solid var(--green-100);border-radius:999px;padding:6px 10px;font-size:13px;font-weight:700;color:var(--green-dark)}
+  .chip .age{background:#fff;border:1px solid var(--green-100);border-radius:999px;padding:1px 8px;font-size:11px;cursor:pointer}
+  .chip .x{cursor:pointer;color:var(--n400);font-weight:700}
+  .chip-add{display:flex;gap:8px}
+  .chip-add input{flex:1}
+  .chip-add button{white-space:nowrap;background:var(--green);color:#fff;border:none;border-radius:10px;padding:0 14px;cursor:pointer;font-weight:700}
+
+  .footer-btn{margin-top:6px}
+  .note{max-width:720px;margin:28px auto 0;background:#fff;border:1px solid var(--n200);
+        border-radius:14px;padding:16px;font-size:13px;color:var(--n600);line-height:1.5}
+  .note b{color:var(--n800)}
+</style>
+</head>
+<body>
+  <h1>Digitar lotes + edades · 4 propuestas</h1>
+  <div class="sub">Mismo nº de lotes que de edades (1 edad por lote). Paleta = design system Cargill.</div>
+
+  <div class="grid">
+
+    <!-- OPCIÓN A -->
+    <div class="phone">
+      <div class="topbar"><div class="t">Nuevo lote</div><div class="s">Identificación · Paso 1 de 4</div></div>
+      <div class="body">
+        <span class="opt-label">A · Filas dinámicas (recomendada)</span>
+        <div class="card">
+          <h3>LOTES</h3>
+          <div id="rowsA"></div>
+          <button class="btn ghost" onclick="addRowA()">＋ Agregar lote</button>
+          <div class="hint">Cada fila = un lote con su edad. Quita con 🗑.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPCIÓN B -->
+    <div class="phone">
+      <div class="topbar"><div class="t">Nuevo lote</div><div class="s">Identificación · Paso 1 de 4</div></div>
+      <div class="body">
+        <span class="opt-label">B · Cantidad → genera campos</span>
+        <div class="card">
+          <h3>¿CUÁNTOS LOTES?</h3>
+          <div class="stepper">
+            <button onclick="stepB(-1)">−</button>
+            <span class="val" id="countB">2</span>
+            <button onclick="stepB(1)">＋</button>
+          </div>
+          <div id="rowsB"></div>
+          <div class="ok">La cantidad de edades coincide siempre con la de lotes.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPCIÓN C -->
+    <div class="phone">
+      <div class="topbar"><div class="t">Nuevo lote</div><div class="s">Identificación · Paso 1 de 4</div></div>
+      <div class="body">
+        <span class="opt-label">C · Chips con edad</span>
+        <div class="card">
+          <h3>LOTES</h3>
+          <div class="chips" id="chipsC"></div>
+          <div class="chip-add">
+            <input id="chipName" placeholder="Nombre del lote (Enter)" onkeydown="if(event.key==='Enter')addChipC()"/>
+            <button onclick="addChipC()">＋</button>
+          </div>
+          <div class="hint">Toca la edad del chip para cambiarla. ✕ para quitar.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPCIÓN D -->
+    <div class="phone">
+      <div class="topbar"><div class="t">Nuevo lote</div><div class="s">Identificación · Paso 1 de 4</div></div>
+      <div class="body">
+        <span class="opt-label">D · Dos listas sincronizadas</span>
+        <div class="card">
+          <h3>LOTES Y EDADES</h3>
+          <label>Lotes (separados por coma)</label>
+          <input id="lotesD" value="Lote1, Lote2" oninput="checkD()"/>
+          <div style="height:10px"></div>
+          <label>Edades iniciales (separadas por coma)</label>
+          <input id="edadesD" value="0, 5" oninput="checkD()"/>
+          <div id="msgD"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <b>Nota de implementación:</b> cualquiera de estas opciones requiere guardar los lotes como
+    <b>pares (nombre, edad)</b> en vez de un solo texto + una sola edad. La opción <b>A</b> y <b>B</b> son las
+    más a prueba de errores (imposible descuadrar lotes≠edades). La <b>C</b> es la más compacta. La <b>D</b> es el
+    cambio mínimo pero necesita validar que ambas listas tengan la misma cantidad.
+    <br><br>Dime cuál eliges y la implemento en la app (Compose), incluyendo el ajuste del modelo de datos.
+  </div>
+
+<script>
+  /* ---------- A: filas dinámicas ---------- */
+  let A = [{n:'Lote1',e:'0'},{n:'Lote2',e:'5'}];
+  function renderA(){
+    const c=document.getElementById('rowsA'); c.innerHTML='';
+    A.forEach((it,i)=>{
+      const row=document.createElement('div'); row.className='row';
+      row.innerHTML=`
+        <div class="f1"><label>Nombre del lote</label>
+          <input value="${it.n}" oninput="A[${i}].n=this.value"/></div>
+        <div><label>Edad</label>
+          <input class="num" type="number" min="0" value="${it.e}" oninput="A[${i}].e=this.value"/></div>
+        <button class="icon-btn" title="Quitar" onclick="A.splice(${i},1);renderA()">🗑</button>`;
+      c.appendChild(row);
+    });
+  }
+  function addRowA(){A.push({n:'',e:'0'});renderA();}
+
+  /* ---------- B: cantidad genera campos ---------- */
+  let B=[{n:'Lote1',e:'0'},{n:'Lote2',e:'5'}];
+  function renderB(){
+    document.getElementById('countB').textContent=B.length;
+    const c=document.getElementById('rowsB'); c.innerHTML='';
+    B.forEach((it,i)=>{
+      const row=document.createElement('div'); row.className='row';
+      row.innerHTML=`
+        <div class="f1"><label>Lote ${i+1}</label>
+          <input value="${it.n}" oninput="B[${i}].n=this.value"/></div>
+        <div><label>Edad</label>
+          <input class="num" type="number" min="0" value="${it.e}" oninput="B[${i}].e=this.value"/></div>`;
+      c.appendChild(row);
+    });
+  }
+  function stepB(d){
+    const next=Math.max(1,Math.min(8,B.length+d));
+    if(next>B.length) B.push({n:'',e:'0'}); else B=B.slice(0,next);
+    renderB();
+  }
+
+  /* ---------- C: chips ---------- */
+  let C=[{n:'Lote1',e:'0'},{n:'Lote2',e:'5'}];
+  function renderC(){
+    const c=document.getElementById('chipsC'); c.innerHTML='';
+    C.forEach((it,i)=>{
+      const chip=document.createElement('span'); chip.className='chip';
+      chip.innerHTML=`${it.n}
+        <span class="age" title="Editar edad" onclick="editAgeC(${i})">${it.e}d</span>
+        <span class="x" onclick="C.splice(${i},1);renderC()">✕</span>`;
+      c.appendChild(chip);
+    });
+  }
+  function addChipC(){
+    const inp=document.getElementById('chipName'); const v=inp.value.trim();
+    if(!v) return; C.push({n:v,e:'0'}); inp.value=''; renderC(); inp.focus();
+  }
+  function editAgeC(i){
+    const v=prompt('Edad inicial del lote "'+C[i].n+'" (días):',C[i].e);
+    if(v!==null){C[i].e=v.trim();renderC();}
+  }
+
+  /* ---------- D: dos listas ---------- */
+  function checkD(){
+    const l=document.getElementById('lotesD').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const e=document.getElementById('edadesD').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const m=document.getElementById('msgD');
+    if(l.length===e.length && l.length>0){
+      m.className='ok'; m.textContent=`✓ ${l.length} lote(s), ${e.length} edad(es) — coinciden.`;
+    }else{
+      m.className='warn'; m.textContent=`⚠ ${l.length} lote(s) vs ${e.length} edad(es) — deben coincidir.`;
+    }
+  }
+
+  renderA(); renderB(); renderC(); checkD();
+</script>
+</body>
+</html>

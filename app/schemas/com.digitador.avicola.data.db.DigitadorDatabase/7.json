@@ -1,0 +1,586 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 7,
+    "identityHash": "27be7ac7ac82c496d32a8df270188427",
+    "entities": [
+      {
+        "tableName": "partida",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `numero` TEXT NOT NULL, `lote` TEXT NOT NULL, `edad` TEXT NOT NULL, `fechaInicio` TEXT NOT NULL, `lineaGenetica` TEXT NOT NULL, `usarGuia` INTEGER NOT NULL, `finalizada` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numero",
+            "columnName": "numero",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lote",
+            "columnName": "lote",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "edad",
+            "columnName": "edad",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fechaInicio",
+            "columnName": "fechaInicio",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineaGenetica",
+            "columnName": "lineaGenetica",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "usarGuia",
+            "columnName": "usarGuia",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finalizada",
+            "columnName": "finalizada",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "galera",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `partidaId` INTEGER NOT NULL, `nombre` TEXT NOT NULL, `orden` INTEGER NOT NULL, PRIMARY KEY(`id`, `partidaId`), FOREIGN KEY(`partidaId`) REFERENCES `partida`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "partidaId",
+            "columnName": "partidaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nombre",
+            "columnName": "nombre",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orden",
+            "columnName": "orden",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id",
+            "partidaId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_galera_partidaId",
+            "unique": false,
+            "columnNames": [
+              "partidaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_galera_partidaId` ON `${TABLE_NAME}` (`partidaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "partida",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "partidaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "corral",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `partidaId` INTEGER NOT NULL, `galeraId` TEXT NOT NULL, `orden` INTEGER NOT NULL, PRIMARY KEY(`id`, `partidaId`), FOREIGN KEY(`galeraId`, `partidaId`) REFERENCES `galera`(`id`, `partidaId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "partidaId",
+            "columnName": "partidaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "galeraId",
+            "columnName": "galeraId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orden",
+            "columnName": "orden",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id",
+            "partidaId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_corral_galeraId_partidaId",
+            "unique": false,
+            "columnNames": [
+              "galeraId",
+              "partidaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_corral_galeraId_partidaId` ON `${TABLE_NAME}` (`galeraId`, `partidaId`)"
+          },
+          {
+            "name": "index_corral_partidaId",
+            "unique": false,
+            "columnNames": [
+              "partidaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_corral_partidaId` ON `${TABLE_NAME}` (`partidaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "galera",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "galeraId",
+              "partidaId"
+            ],
+            "referencedColumns": [
+              "id",
+              "partidaId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "parcela",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `partidaId` INTEGER NOT NULL, `corralId` TEXT NOT NULL, `inicio` INTEGER NOT NULL, `pesoInicio` REAL NOT NULL, `orden` INTEGER NOT NULL, PRIMARY KEY(`id`, `partidaId`), FOREIGN KEY(`corralId`, `partidaId`) REFERENCES `corral`(`id`, `partidaId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "partidaId",
+            "columnName": "partidaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "corralId",
+            "columnName": "corralId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inicio",
+            "columnName": "inicio",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pesoInicio",
+            "columnName": "pesoInicio",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orden",
+            "columnName": "orden",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id",
+            "partidaId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_parcela_corralId_partidaId",
+            "unique": false,
+            "columnNames": [
+              "corralId",
+              "partidaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_parcela_corralId_partidaId` ON `${TABLE_NAME}` (`corralId`, `partidaId`)"
+          },
+          {
+            "name": "index_parcela_partidaId",
+            "unique": false,
+            "columnNames": [
+              "partidaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_parcela_partidaId` ON `${TABLE_NAME}` (`partidaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "corral",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "corralId",
+              "partidaId"
+            ],
+            "referencedColumns": [
+              "id",
+              "partidaId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "semana",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`partidaId` INTEGER NOT NULL, `numero` INTEGER NOT NULL, `fechaInicio` TEXT NOT NULL, `fechaFin` TEXT NOT NULL, `refsActivas` TEXT NOT NULL, PRIMARY KEY(`partidaId`, `numero`), FOREIGN KEY(`partidaId`) REFERENCES `partida`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "partidaId",
+            "columnName": "partidaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numero",
+            "columnName": "numero",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fechaInicio",
+            "columnName": "fechaInicio",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fechaFin",
+            "columnName": "fechaFin",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "refsActivas",
+            "columnName": "refsActivas",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "partidaId",
+            "numero"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_semana_partidaId",
+            "unique": false,
+            "columnNames": [
+              "partidaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_semana_partidaId` ON `${TABLE_NAME}` (`partidaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "partida",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "partidaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "dato_parcela",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`partidaId` INTEGER NOT NULL, `semanaNumero` INTEGER NOT NULL, `parcelaId` TEXT NOT NULL, `mort` TEXT NOT NULL, `peso` REAL, `pesos` TEXT NOT NULL, `consAjust` REAL, PRIMARY KEY(`partidaId`, `semanaNumero`, `parcelaId`), FOREIGN KEY(`parcelaId`, `partidaId`) REFERENCES `parcela`(`id`, `partidaId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "partidaId",
+            "columnName": "partidaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semanaNumero",
+            "columnName": "semanaNumero",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parcelaId",
+            "columnName": "parcelaId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mort",
+            "columnName": "mort",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "peso",
+            "columnName": "peso",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "pesos",
+            "columnName": "pesos",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consAjust",
+            "columnName": "consAjust",
+            "affinity": "REAL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "partidaId",
+            "semanaNumero",
+            "parcelaId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_dato_parcela_partidaId",
+            "unique": false,
+            "columnNames": [
+              "partidaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_dato_parcela_partidaId` ON `${TABLE_NAME}` (`partidaId`)"
+          },
+          {
+            "name": "index_dato_parcela_semanaNumero",
+            "unique": false,
+            "columnNames": [
+              "semanaNumero"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_dato_parcela_semanaNumero` ON `${TABLE_NAME}` (`semanaNumero`)"
+          },
+          {
+            "name": "index_dato_parcela_parcelaId",
+            "unique": false,
+            "columnNames": [
+              "parcelaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_dato_parcela_parcelaId` ON `${TABLE_NAME}` (`parcelaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "parcela",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "parcelaId",
+              "partidaId"
+            ],
+            "referencedColumns": [
+              "id",
+              "partidaId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "ref_alimento",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`partidaId` INTEGER NOT NULL, `semanaNumero` INTEGER NOT NULL, `parcelaId` TEXT NOT NULL, `tipo` TEXT NOT NULL, `ingreso` REAL, `saldoFin` REAL, PRIMARY KEY(`partidaId`, `semanaNumero`, `parcelaId`, `tipo`), FOREIGN KEY(`parcelaId`, `partidaId`) REFERENCES `parcela`(`id`, `partidaId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "partidaId",
+            "columnName": "partidaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semanaNumero",
+            "columnName": "semanaNumero",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parcelaId",
+            "columnName": "parcelaId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tipo",
+            "columnName": "tipo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ingreso",
+            "columnName": "ingreso",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "saldoFin",
+            "columnName": "saldoFin",
+            "affinity": "REAL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "partidaId",
+            "semanaNumero",
+            "parcelaId",
+            "tipo"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_ref_alimento_partidaId",
+            "unique": false,
+            "columnNames": [
+              "partidaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ref_alimento_partidaId` ON `${TABLE_NAME}` (`partidaId`)"
+          },
+          {
+            "name": "index_ref_alimento_semanaNumero",
+            "unique": false,
+            "columnNames": [
+              "semanaNumero"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ref_alimento_semanaNumero` ON `${TABLE_NAME}` (`semanaNumero`)"
+          },
+          {
+            "name": "index_ref_alimento_parcelaId",
+            "unique": false,
+            "columnNames": [
+              "parcelaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ref_alimento_parcelaId` ON `${TABLE_NAME}` (`parcelaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "parcela",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "parcelaId",
+              "partidaId"
+            ],
+            "referencedColumns": [
+              "id",
+              "partidaId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "borrador_lote",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `nombre` TEXT NOT NULL, `fechaGuardado` INTEGER NOT NULL, `jsonData` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nombre",
+            "columnName": "nombre",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fechaGuardado",
+            "columnName": "fechaGuardado",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jsonData",
+            "columnName": "jsonData",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '27be7ac7ac82c496d32a8df270188427')"
+    ]
+  }
+}
