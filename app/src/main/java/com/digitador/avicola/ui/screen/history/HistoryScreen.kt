@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,7 +62,6 @@ fun HistoryScreen(
     val pinHabilitado by vm.pinHabilitado.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("Todos") }
-    val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
 
     // Diálogo de PIN para acceder a la papelera (solo si el PIN está habilitado).
@@ -366,77 +366,45 @@ fun HistoryScreen(
                         }
                     }
 
+                    // Acciones por fila, inyectadas a cada tarjeta.
+                    val abrir: (PartidaSummary) -> Unit = { s ->
+                        vm.selectPartida(s.id)
+                        if (s.pendiente) onCompletePending(s.id) else onSelect(s.id)
+                    }
+                    val editar: (PartidaSummary) -> Unit = { s -> editTarget = s }
+                    val borrar: (PartidaSummary) -> Unit = { s -> vm.deletePartida(s.id) }
+
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
-                        items(items = filteredList, key = { it.id }) { summary ->
-                            var showConfirm by remember { mutableStateOf(false) }
-                            val dismissState = rememberSwipeToDismissBoxState(
-                                confirmValueChange = {
-                                    if (it == SwipeToDismissBoxValue.EndToStart) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        showConfirm = true
-                                    }
-                                    false
-                                }
-                            )
+                        if (selectedFilter == "Todos") {
+                            // Vista agrupada por etapa del ciclo de vida del lote.
+                            val gCreacion    = filteredList.filter { it.pendiente }
+                            val gCrecimiento = filteredList.filter { !it.pendiente && !it.finalizada }
+                            val gCerradas    = filteredList.filter { it.finalizada }
 
-                            if (showConfirm) {
-                                AlertDialog(
-                                    onDismissRequest = { showConfirm = false },
-                                    icon = { Icon(Icons.Default.Delete, null, tint = TextSecondary) },
-                                    title = { Text("Borrar partida") },
-                                    text = {
-                                        val nombre = if (summary.pendiente) "el lote pendiente"
-                                            else "la partida ${summary.numero}"
-                                        Text("¿Deseas eliminar definitivamente $nombre? Esta acción no se puede deshacer.")
-                                    },
-                                    confirmButton = {
-                                        TextButton(onClick = {
-                                            showConfirm = false
-                                            vm.deletePartida(summary.id)
-                                        }) { Text("Borrar", color = TextPrimary, fontWeight = FontWeight.Bold) }
-                                    },
-                                    dismissButton = {
-                                        TextButton(onClick = { showConfirm = false }) { Text("Cancelar") }
-                                    }
-                                )
+                            if (gCreacion.isNotEmpty()) {
+                                item(key = "h_creacion") {
+                                    GroupHeader(Icons.Default.HourglassEmpty, "En creación", gCreacion.size, Warning, WarningDark)
+                                }
+                                partidaItems(gCreacion, abrir, editar, borrar)
                             }
-
-                            SwipeToDismissBox(
-                                state = dismissState,
-                                enableDismissFromStartToEnd = false,
-                                backgroundContent = {
-                                    val swiping = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
-                                    Box(
-                                        Modifier
-                                            .fillMaxSize()
-                                            .background(
-                                                if (swiping) Error.copy(alpha = 0.8f) else Color.Transparent,
-                                                RoundedCornerShape(16.dp)
-                                            )
-                                            .padding(horizontal = 24.dp),
-                                        contentAlignment = Alignment.CenterEnd
-                                    ) {
-                                        Icon(Icons.Default.Delete, null, tint = Color.White)
-                                    }
-                                },
-                                content = {
-                                    PartidaCard(summary,
-                                        onSelect = {
-                                            vm.selectPartida(summary.id)
-                                            if (summary.pendiente) onCompletePending(summary.id)
-                                            else onSelect(summary.id)
-                                        },
-                                        // Long-press → editar recepción. Solo lotes activos no finalizados.
-                                        onLongPress = if (!summary.pendiente && !summary.finalizada) {
-                                            { editTarget = summary }
-                                        } else null
-                                    )
+                            if (gCrecimiento.isNotEmpty()) {
+                                item(key = "h_crecimiento") {
+                                    GroupHeader(Icons.Default.TrendingUp, "En crecimiento", gCrecimiento.size, AvicolaPrimary, PrimaryDark)
                                 }
-                            )
+                                partidaItems(gCrecimiento, abrir, editar, borrar)
+                            }
+                            if (gCerradas.isNotEmpty()) {
+                                item(key = "h_cerradas") {
+                                    GroupHeader(Icons.Default.CheckCircle, "Ciclo cerrado", gCerradas.size, TextMuted, TextSecondary)
+                                }
+                                partidaItems(gCerradas, abrir, editar, borrar)
+                            }
+                        } else {
+                            partidaItems(filteredList, abrir, editar, borrar)
                         }
                     }
                 } else if (!ui.loading) {
@@ -449,74 +417,304 @@ fun HistoryScreen(
 
 @Composable
 private fun PartidaCard(summary: PartidaSummary, onSelect: () -> Unit, onLongPress: (() -> Unit)? = null) {
-    if (summary.pendiente) PendingCard(summary, onSelect) else ActiveCard(summary, onSelect, onLongPress)
+    when {
+        summary.pendiente  -> PendingCard(summary, onSelect)
+        summary.finalizada -> ClosedCard(summary, onSelect)
+        else               -> GrowingCard(summary, onSelect, onLongPress)
+    }
 }
 
-/** Tarjeta de lote ACTIVO (ya digitado completo). Long-press → editar recepción. */
+/** Encabezado de grupo (vista agrupada por estado del ciclo). */
+@Composable
+private fun GroupHeader(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    count: Int,
+    accent: Color,
+    textColor: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = accent, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(
+            label.uppercase(),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = textColor,
+            letterSpacing = 0.5.sp
+        )
+        Spacer(Modifier.width(6.dp))
+        Text("· $count", style = MaterialTheme.typography.labelMedium, color = TextTertiary)
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f).height(1.dp).background(Line))
+    }
+}
+
+/**
+ * Lote EN CRECIMIENTO (activo). Franja verde + punto "vivo".
+ * Anillo: nº de semana en curso; relleno = % digitado de esa semana.
+ * Long-press → editar recepción.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ActiveCard(summary: PartidaSummary, onSelect: () -> Unit, onLongPress: (() -> Unit)? = null) {
+private fun GrowingCard(summary: PartidaSummary, onSelect: () -> Unit, onLongPress: (() -> Unit)? = null) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = androidx.compose.foundation.BorderStroke(1.dp, Line)
     ) {
-        Row(
-            // El clic va DENTRO de la Card: la Surface recorta el contenido a la forma
-            // redondeada, así el ripple/realce respeta las puntas (no se ve cuadrado).
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(onClick = onSelect, onLongClick = onLongPress)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(54.dp)) {
-                CircularProgressIndicator(
-                    progress = { summary.progreso / 100f },
-                    modifier = Modifier.fillMaxSize(),
-                    color = if (summary.progreso == 100) OkGreen else Accent,
-                    trackColor = Line.copy(alpha = 0.3f),
-                    strokeWidth = 4.dp,
-                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-                )
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        summary.ultimaSemana.toString(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        color = if (summary.progreso == 100) OkGreen else Ink
-                    )
-                    Text("SEM", style = MaterialTheme.typography.labelSmall, fontSize = 8.sp, color = TextTertiary)
-                }
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Partida ${summary.numero}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold
-                )
-                Text(
-                    "${summary.avesActuales} aves vivas",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextTertiary
-                )
-            }
-            Surface(
-                color = (if (summary.progreso == 100) OkGreen else Accent).copy(alpha = 0.1f),
-                shape = RoundedCornerShape(8.dp)
+        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            // Franja de estado (verde).
+            Box(Modifier.width(5.dp).fillMaxHeight().background(AvicolaPrimary))
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .combinedClickable(onClick = onSelect, onLongClick = onLongPress)
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "${summary.progreso}%",
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = if (summary.progreso == 100) OkGreen else Accent
-                )
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(54.dp)) {
+                    CircularProgressIndicator(
+                        progress = { summary.progreso / 100f },
+                        modifier = Modifier.fillMaxSize(),
+                        color = if (summary.progreso == 100) OkGreen else Accent,
+                        trackColor = Line.copy(alpha = 0.3f),
+                        strokeWidth = 4.dp,
+                        strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            summary.ultimaSemana.toString(),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = if (summary.progreso == 100) OkGreen else Ink
+                        )
+                        Text("SEM", style = MaterialTheme.typography.labelSmall, fontSize = 8.sp, color = TextTertiary)
+                    }
+                }
+                Spacer(Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Partida ${summary.numero}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        LiveDot()
+                    }
+                    Text(
+                        "${summary.avesActuales} aves vivas",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextTertiary
+                    )
+                }
+                Surface(
+                    color = AvicolaPrimary.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        "Activa",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryDark
+                    )
+                }
             }
         }
     }
+}
+
+/** Punto verde que late: señal de lote "vivo" en crecimiento. */
+@Composable
+private fun LiveDot() {
+    val transition = rememberInfiniteTransition(label = "live")
+    val dotAlpha by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.25f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "liveAlpha"
+    )
+    Box(
+        Modifier
+            .size(7.dp)
+            .graphicsLayer { alpha = dotAlpha }
+            .background(AvicolaPrimary, CircleShape)
+    )
+}
+
+/** Lote con CICLO CERRADO: tono apagado + resumen final del ciclo. */
+@Composable
+private fun ClosedCard(summary: PartidaSummary, onSelect: () -> Unit) {
+    val mortPct = if (summary.avesIniciales > 0)
+        (summary.avesIniciales - summary.avesActuales) * 100.0 / summary.avesIniciales else 0.0
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceAlt),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            // Franja de estado (gris): el lote está archivado.
+            Box(Modifier.width(5.dp).fillMaxHeight().background(TextMuted))
+            Column(
+                modifier = Modifier.weight(1f).clickable { onSelect() }.padding(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier.size(40.dp).background(Border, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.CheckCircle, null, tint = TextSecondary, modifier = Modifier.size(22.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Partida ${summary.numero}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary
+                        )
+                        Text(
+                            "Finalizada · Sem ${summary.ultimaSemana}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted
+                        )
+                    }
+                    Surface(color = Border, shape = RoundedCornerShape(8.dp)) {
+                        Text(
+                            "Cerrada",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ClosedStat("Aves vivas", "${summary.avesActuales}", Modifier.weight(1f))
+                    ClosedStat(
+                        "Mortalidad",
+                        String.format(java.util.Locale.US, "%.1f%%", mortPct),
+                        Modifier.weight(1f),
+                        danger = true
+                    )
+                    ClosedStat("Semanas", "${summary.ultimaSemana}", Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+/** Celda de resumen para un lote cerrado (etiqueta + valor). */
+@Composable
+private fun ClosedStat(label: String, value: String, modifier: Modifier = Modifier, danger: Boolean = false) {
+    Surface(
+        modifier = modifier,
+        color = Color.White,
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(label, style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, color = TextTertiary)
+            Text(
+                value,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (danger) DangerText else TextPrimary
+            )
+        }
+    }
+}
+
+/** Emite las filas de una lista de partidas (cada una con swipe-para-borrar). */
+private fun LazyListScope.partidaItems(
+    lista: List<PartidaSummary>,
+    onOpen: (PartidaSummary) -> Unit,
+    onEdit: (PartidaSummary) -> Unit,
+    onDelete: (PartidaSummary) -> Unit
+) {
+    items(lista, key = { it.id }) { s ->
+        PartidaSwipeRow(
+            summary = s,
+            onOpen = { onOpen(s) },
+            // Long-press → editar recepción. Solo lotes activos no finalizados.
+            onEdit = if (!s.pendiente && !s.finalizada) ({ onEdit(s) }) else null,
+            onDelete = { onDelete(s) }
+        )
+    }
+}
+
+/** Fila con gesto de deslizar para borrar (confirmación) y la tarjeta según estado. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PartidaSwipeRow(
+    summary: PartidaSummary,
+    onOpen: () -> Unit,
+    onEdit: (() -> Unit)?,
+    onDelete: () -> Unit
+) {
+    val haptic = LocalHapticFeedback.current
+    var showConfirm by remember { mutableStateOf(false) }
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = {
+            if (it == SwipeToDismissBoxValue.EndToStart) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                showConfirm = true
+            }
+            false
+        }
+    )
+
+    if (showConfirm) {
+        AlertDialog(
+            onDismissRequest = { showConfirm = false },
+            icon = { Icon(Icons.Default.Delete, null, tint = TextSecondary) },
+            title = { Text("Borrar partida") },
+            text = {
+                val nombre = if (summary.pendiente) "el lote pendiente" else "la partida ${summary.numero}"
+                Text("¿Deseas eliminar definitivamente $nombre? Esta acción no se puede deshacer.")
+            },
+            confirmButton = {
+                TextButton(onClick = { showConfirm = false; onDelete() }) {
+                    Text("Borrar", color = TextPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirm = false }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            val swiping = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        if (swiping) Error.copy(alpha = 0.8f) else Color.Transparent,
+                        RoundedCornerShape(16.dp)
+                    )
+                    .padding(horizontal = 24.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Icon(Icons.Default.Delete, null, tint = Color.White)
+            }
+        },
+        content = { PartidaCard(summary, onSelect = onOpen, onLongPress = onEdit) }
+    )
 }
 
 /**
