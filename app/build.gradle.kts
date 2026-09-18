@@ -87,6 +87,10 @@ android {
 
     buildFeatures { compose = true }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     // Permite a Room verificar y generar migraciones contra el esquema versionado.
     sourceSets {
         getByName("androidTest").assets.srcDir("$projectDir/schemas")
@@ -159,6 +163,10 @@ dependencies {
     // Excel export
     implementation(libs.poi.ooxml)
 
-    // Tests unitarios del motor de cálculo (JVM puro, sin Android)
+    // Tests unitarios. El motor de cálculo corre en JVM pura; los repositorios y la
+    // importación .davi necesitan Room y un Context, así que van con Robolectric.
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

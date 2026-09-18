@@ -337,10 +337,27 @@ código anterior. En el mismo paso se arregló el build de *release*, que estaba
   se limpian al purgar de ahora en adelante, pero las ya huérfanas no se barren. Si
   molestan, haría falta un barrido contra los uid vivos — con cuidado, porque borrar de
   más quita las referencias excluidas y eso **cambia los indicadores** de un lote.
-- Ampliar los tests más allá del motor de cálculo (repositorios, importación `.davi`).
+- Ampliar los tests a la UI (los ViewModels y las pantallas siguen sin cobertura; haría
+  falta `compose-ui-test`).
 - En la hoja por galera, la columna **"Consumo(g)"** trae kilogramos, no gramos: el
   encabezado miente. Esa hoja está deshabilitada hoy, pero hay que corregirlo antes de
   reactivarla.
+
+---
+
+### Tests
+
+`./gradlew testDebugUnitTest` — todo corre en la JVM, sin emulador ni dispositivo.
+
+| Suite | Qué cubre |
+|---|---|
+| `CalculadoraEquivalenciaTest`, `ProgresoTest` | El motor de cálculo, en JVM pura. Comparan contra una copia del código anterior al refactor. |
+| `ClavesDeLoteTest` | Qué preferencias se borran al purgar un lote (JVM pura). |
+| `DigitadorRepositorioTest`, `ImportarDaviTest` | Repositorio e importación `.davi` contra una base Room **real en memoria**, con Robolectric. |
+
+Robolectric necesita **4.17 o superior**: las versiones anteriores no entienden el
+bytecode del JDK 25 que trae Android Studio y fallan con
+`Unsupported class file major version 69`.
 
 ---
 
