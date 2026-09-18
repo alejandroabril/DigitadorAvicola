@@ -11,7 +11,7 @@ Documentación detallada del proyecto, organizada por tema. Los diagramas están
 | Documento | Contenido |
 |---|---|
 | [arquitectura.md](arquitectura.md) | Visión general, stack y versiones, patrón MVVM + StateFlow, estructura de paquetes, inyección de dependencias (Hilt), arranque y recepción de `.davi`. Diagramas de capas y de flujo de datos. |
-| [modelo-datos.md](modelo-datos.md) | Modelo Room: cada entidad y campo, DAOs, repositorios, migraciones (v7→v10), `ConfigRepository` (PIN, prefs). Diagrama entidad-relación. Unidades kg/g. |
+| [modelo-datos.md](modelo-datos.md) | Modelo Room: cada entidad y campo, DAOs, repositorios, migraciones (v7→v11), `ConfigRepository` (PIN, prefs). Diagrama entidad-relación. Unidades kg/g. |
 | [calculos.md](calculos.md) | La `Calculadora` indicador por indicador (peso, consumo, FCR, GDP, CV, FEP, ratio…), con fórmulas, código, ejemplos numéricos y casos borde. Validación de "Terminar semana". |
 | [pantallas.md](pantallas.md) | Cada pantalla (estado, ViewModel, flujos) y la navegación type-safe. Diagrama de navegación. |
 | [davi-y-exportacion.md](davi-y-exportacion.md) | Formato `.davi` (3 variantes con ejemplos JSON), importación/duplicados, exportación a Excel (POI) y PDF (3 hojas). Diagrama del flujo de importación. |

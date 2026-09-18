@@ -131,7 +131,13 @@ data class SemanaEntity(
     foreignKeys = [
         ForeignKey(entity = ParcelaEntity::class, parentColumns = ["id", "partidaId"], childColumns = ["parcelaId", "partidaId"], onDelete = ForeignKey.CASCADE)
     ],
-    indices = [Index("partidaId"), Index("semanaNumero"), Index("parcelaId")]
+    // El índice de parcelaId es COMPUESTO con partidaId para que cubra la clave foránea
+    // de arriba. Con un índice suelto por parcelaId el planificador ni siquiera lo usaba:
+    // caía en el autoíndice de la clave primaria y recorría TODAS las filas del lote
+    // filtrando por parcelaId, en cada fila de `parcela` que se borre (borrado en cascada
+    // al purgar la papelera o al reimportar una distribución distinta).
+    // El compuesto sirve igual las búsquedas por parcelaId, porque es su prefijo.
+    indices = [Index("partidaId"), Index("semanaNumero"), Index("parcelaId", "partidaId")]
 )
 @TypeConverters(Converters::class)
 data class DatoParcelaEntity(
@@ -152,7 +158,8 @@ data class DatoParcelaEntity(
     foreignKeys = [
         ForeignKey(entity = ParcelaEntity::class, parentColumns = ["id", "partidaId"], childColumns = ["parcelaId", "partidaId"], onDelete = ForeignKey.CASCADE)
     ],
-    indices = [Index("partidaId"), Index("semanaNumero"), Index("parcelaId")]
+    // Compuesto para cubrir la clave foránea, igual que en dato_parcela.
+    indices = [Index("partidaId"), Index("semanaNumero"), Index("parcelaId", "partidaId")]
 )
 data class RefAlimentoEntity(
     val partidaId: Long,

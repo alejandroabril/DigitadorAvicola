@@ -375,9 +375,17 @@ Mantiene el **estado de la app activa** en memoria:
 
 Detalle: las columnas nuevas **no** declaran `defaultValue` en la entidad, así Room no valida el `DEFAULT` del `ALTER` (necesario para columnas `NOT NULL` en SQLite).
 
+**v10 → v11 (índices):** añade los índices compuestos `(parcelaId, partidaId)` en
+`dato_parcela` y `ref_alimento`, y quita los sueltos por `parcelaId` —el compuesto los
+cubre como prefijo—. No toca ningún dato. Sin ellos el planificador de SQLite no usaba el
+índice de `parcelaId`: caía en el autoíndice de la clave primaria y recorría todas las
+filas del lote en cada borrado en cascada de `parcela` (purgar la papelera, reimportar una
+distribución distinta). Medido sobre 300 jaulas × 30 semanas, borrar 150 jaulas en
+cascada pasó de 127 ms a 19 ms.
+
 **Fallback destructivo acotado:** `fallbackToDestructiveMigrationFrom(1, 2, 3, 4, 5, 6)`. Solo recrea la BD (con pérdida) si se viene de versiones **previas** a la exportación de esquema (1..6), improbables en campo. De la **v7 en adelante** los datos se migran; **un salto futuro SIN migración FALLARÁ** en vez de borrar en silencio.
 
-El esquema se exporta a `app/schemas/…/{7,8,9,10}.json` desde la v7.
+El esquema se exporta a `app/schemas/…/{7,8,9,10,11}.json` desde la v7.
 
 > ### 🔧 REGLA al cambiar el esquema
 > 1. Modificar la entidad (añadir/quitar columna, índice, etc.).

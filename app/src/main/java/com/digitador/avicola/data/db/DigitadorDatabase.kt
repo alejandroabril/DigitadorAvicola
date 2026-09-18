@@ -22,7 +22,7 @@ import com.digitador.avicola.data.db.entity.*
         RefAlimentoEntity::class,
         BorradorLoteEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -56,6 +56,22 @@ abstract class DigitadorDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Índices que cubren la clave foránea (parcelaId, partidaId) de `dato_parcela`
+         * y `ref_alimento`, para el borrado en cascada de `parcela`.
+         *
+         * No cambia ningún dato: solo crea los índices compuestos y quita los sueltos por
+         * parcelaId, que el compuesto ya cubre como prefijo.
+         */
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP INDEX IF EXISTS index_dato_parcela_parcelaId")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_dato_parcela_parcelaId_partidaId ON dato_parcela (parcelaId, partidaId)")
+                db.execSQL("DROP INDEX IF EXISTS index_ref_alimento_parcelaId")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ref_alimento_parcelaId_partidaId ON ref_alimento (parcelaId, partidaId)")
+            }
+        }
+
         fun getInstance(context: Context): DigitadorDatabase =
             INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(
@@ -63,7 +79,7 @@ abstract class DigitadorDatabase : RoomDatabase() {
                     DigitadorDatabase::class.java,
                     "digitador_avicola.db"
                 )
-                    .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     // Solo recrea la BD (con pérdida) si se viene de versiones PREVIAS a la
                     // exportación de esquema (1..6), improbables en campo. De la v7 en adelante
                     // se migran datos; un salto futuro SIN migración fallará en vez de borrar

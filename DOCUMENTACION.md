@@ -70,7 +70,7 @@ DigitadorApp.kt          Application con @HiltAndroidApp.
 di/AppModule.kt          Provee DigitadorDatabase + DAOs (Hilt, Singleton).
 data/
   db/
-    DigitadorDatabase.kt  @Database (v10) + migraciones 7→8, 8→9, 9→10.
+    DigitadorDatabase.kt  @Database (v11) + migraciones 7→8, 8→9, 9→10, 10→11.
     entity/Entities.kt    Entidades Room + Converters (listas ↔ JSON).
     dao/PartidaDao.kt     CRUD de partida/galera/corral/parcela/papelera/borradores.
     dao/SemanaDao.kt      CRUD de semana/dato_parcela/ref_alimento.
@@ -119,7 +119,7 @@ Partida (lote)
 ## 5. Base de datos (Room)
 
 Archivo físico: `digitador_avicola.db` (almacenamiento interno de la app).
-Versión actual: **10**. Esquemas exportados a [`app/schemas/`](app/schemas) (desde la v7).
+Versión actual: **11**. Esquemas exportados a [`app/schemas/`](app/schemas) (desde la v7).
 
 **Entidades** (`data/db/entity/Entities.kt`):
 | Tabla | PK | Notas |
