@@ -687,7 +687,9 @@ private fun AddWeekButton(onClick: () -> Unit) {
                 .clickable { onClick() },
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.Add, null, tint = AvicolaPrimary)
+            // El rótulo "Nueva" de abajo queda FUERA del área pulsable, así que el
+            // lector de pantalla no lo asocia a este botón: la etiqueta va aquí.
+            Icon(Icons.Default.Add, "Nueva semana", tint = AvicolaPrimary)
         }
         Spacer(Modifier.height(4.dp))
         Text(

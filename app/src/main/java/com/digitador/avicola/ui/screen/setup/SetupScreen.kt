@@ -384,7 +384,9 @@ private fun LotesField(lotes: List<LoteEntry>, vm: SetupViewModel) {
                     enabled = active,
                     shape = CircleShape,
                     color = if (active) AvicolaPrimary else Border,
-                    modifier = Modifier.padding(end = 6.dp).size(38.dp)
+                    // Reserva los 48 dp de objetivo táctil sin agrandar el círculo
+                    // dibujado; cabe dentro del campo, que ya mide 56 dp de alto.
+                    modifier = Modifier.padding(end = 6.dp).minimumInteractiveComponentSize().size(38.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
@@ -443,7 +445,10 @@ private fun LoteCell(
                 onClick = onRemove,
                 shape = CircleShape,
                 color = Color.Transparent,
-                modifier = Modifier.size(26.dp)
+                // La "x" se sigue dibujando a 26 dp; lo que crece es el espacio
+                // reservado, para que el objetivo táctil llegue a 48 dp. Eso hace la
+                // fila del lote más alta.
+                modifier = Modifier.minimumInteractiveComponentSize().size(26.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.Close, "Quitar lote", modifier = Modifier.size(14.dp), tint = TextMuted)

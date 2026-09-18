@@ -324,11 +324,15 @@ código anterior. En el mismo paso se arregló el build de *release*, que estaba
 **Pendientes conocidos (menor riesgo):**
 - **Rendimiento:** resuelto en pantallas y export. Queda `exportResumen` (hoja deshabilitada), que sigue pidiendo el corral semana por semana; si se reactiva, necesita una serie por corral como la de `computeSerieParcela`.
 - **Generar la keystore propia** de release: el build ya la lee de `keystore.properties`, solo falta crear la clave (ver §12).
-- **Accesibilidad — objetivos táctiles:** varios `Surface(onClick)` y `.clickable` propios
-  (celdas de digitación, chips) quedan por debajo de 48 dp. Se arregla con
-  `Modifier.minimumInteractiveComponentSize()`, que agranda el área táctil sin mover el
-  diseño. Los `contentDescription` de íconos accionables ya están puestos; los íconos
-  decorativos siguen (correctamente) en `null`, para que el lector no los repita.
+- **Accesibilidad — un objetivo táctil pendiente:** el ícono "!" de unidades en
+  `DigitacionScreen` (`UnidadGramosTip`) es un `IconButton` encogido a 28 dp dentro de una
+  columna de 40 dp de ancho. Reservar los 48 dp ahí desborda la columna de la tabla de
+  digitación, así que hay que rediseñar ese hueco con el teléfono delante.
+  Los chips de 32 dp **no** son un defecto: es la altura que define Material 3
+  (`FilterChipTokens.ContainerHeight`). Y Compose ya expande por su cuenta el área de
+  *toque* de los pulsables pequeños (`NodeCoordinator.isInExpandedTouchBounds`); lo que
+  `minimumInteractiveComponentSize()` aporta es reservar el espacio en el layout, que es
+  lo que miden las auditorías de accesibilidad.
 - Las preferencias de lotes purgados **antes** de este cambio siguen en el archivo:
   se limpian al purgar de ahora en adelante, pero las ya huérfanas no se barren. Si
   molestan, haría falta un barrido contra los uid vivos — con cuidado, porque borrar de
