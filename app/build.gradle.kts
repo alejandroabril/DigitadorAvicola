@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.ksp)
@@ -10,6 +12,33 @@ plugins {
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
+
+// ── Firma de release ──────────────────────────────────────────────────────────
+// La clave NO vive en el repo (que es público). Para firmar de verdad, creá
+// `keystore.properties` en la raíz del proyecto —está en .gitignore— con:
+//
+//     storeFile=/ruta/absoluta/a/digitador-avicola.jks
+//     storePassword=...
+//     keyAlias=digitador
+//     keyPassword=...
+//
+// Y generá la clave con (te pedirá las contraseñas de forma interactiva):
+//
+//     keytool -genkeypair -v -keystore digitador-avicola.jks \
+//       -alias digitador -keyalg RSA -keysize 4096 -validity 10000
+//
+// GUARDÁ ESE .jks Y SUS CONTRASEÑAS FUERA DEL EQUIPO. Si se pierden, las
+// actualizaciones ya no se pueden instalar encima de la app instalada, y como
+// los datos viven solo en el teléfono (allowBackup=false), reinstalar significa
+// perder los lotes digitados.
+//
+// Sin ese archivo el build NO se rompe: release sigue firmando con la clave de
+// debug, que sirve para probar pero no para distribuir.
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val hayKeystorePropia = keystoreProperties.getProperty("storeFile")?.let { file(it).exists() } == true
 
 android {
     namespace = "com.digitador.avicola"
@@ -25,6 +54,17 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    signingConfigs {
+        if (hayKeystorePropia) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -34,9 +74,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Si no tienes un almacén de claves (keystore), el APK de release no se firmará y no se instalará.
-            // Para pruebas rápidas, podrías usar la firma de debug aquí, pero no para producción.
-            signingConfig = signingConfigs.getByName("debug")
+            // Con keystore.properties → firma propia, distribuible.
+            // Sin él → firma de debug, para que el build siga funcionando (ver arriba).
+            signingConfig = signingConfigs.getByName(if (hayKeystorePropia) "release" else "debug")
         }
     }
 
@@ -61,6 +101,19 @@ android {
             excludes += "META-INF/LICENSE.txt"
             excludes += "META-INF/NOTICE"
             excludes += "META-INF/NOTICE.txt"
+        }
+    }
+}
+
+// Avisa al armar un release sin clave propia: ese APK sirve para probar, no para
+// repartir. Es fácil no darse cuenta, porque el build termina bien igual.
+tasks.configureEach {
+    if (name == "assembleRelease" && !hayKeystorePropia) {
+        doFirst {
+            logger.warn(
+                "AVISO: no hay keystore.properties → este APK de release va firmado con la " +
+                "clave de DEBUG. Sirve para probar, no para distribuir. Ver app/build.gradle.kts."
+            )
         }
     }
 }

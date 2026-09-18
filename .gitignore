@@ -22,6 +22,8 @@ local.properties
 # Claves de firma (NUNCA subir a un repositorio)
 *.jks
 *.keystore
+# Ruta y contraseñas del keystore de release (ver app/build.gradle.kts)
+keystore.properties
 
 # Estado local de Claude Code / herramientas del entorno
 /.claude

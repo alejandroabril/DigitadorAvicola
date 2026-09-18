@@ -254,7 +254,31 @@ En [`ExportService.kt`](app/src/main/java/com/digitador/avicola/data/repository/
 2. `Build > Make Project` o `./gradlew assembleDebug` / `assembleRelease`.
 3. Al cambiar el esquema de Room, **el rebuild regenera** `app/schemas/<n>.json` (úsalo para escribir migraciones).
 
-> ⚠️ **Firma de release:** hoy `build.gradle.kts` usa la **keystore de DEBUG** para el build release (`signingConfig = signingConfigs.getByName("debug")`). Para distribución real hay que **crear una keystore propia** y configurarla (idealmente vía `local.properties`/variables de entorno, nunca commiteada). Con la de debug no se puede publicar en Play y cualquiera podría firmar un APK con la misma identidad.
+### Firmar el release
+
+El build ya está preparado: `app/build.gradle.kts` lee `keystore.properties` de la raíz
+del proyecto (ignorado por git, porque **el repo es público**). Si ese archivo no existe,
+release sigue firmando con la clave de DEBUG y el build avisa por consola — así nadie
+reparte por descuido un APK que no sirve para distribuir.
+
+Para firmar de verdad, una sola vez:
+
+```bash
+keytool -genkeypair -v -keystore digitador-avicola.jks \
+  -alias digitador -keyalg RSA -keysize 4096 -validity 10000
+```
+
+y crear `keystore.properties` con `storeFile`, `storePassword`, `keyAlias` y `keyPassword`.
+
+> 🔑 **Guardá el `.jks` y sus contraseñas fuera del equipo** (gestor de contraseñas +
+> copia en otro sitio). Android exige que una actualización esté firmada con la MISMA
+> clave que la versión instalada. Si la clave se pierde, el APK nuevo ya no se puede
+> instalar encima: hay que desinstalar, y como los datos viven solo en el teléfono
+> (`allowBackup=false`), **eso borra los lotes digitados en campo**.
+
+La clave de debug no vale para distribuir: es local a cada máquina (si se pierde, mismo
+problema de arriba), Play no la acepta, y es pública —contraseña `android`, alias
+`androiddebugkey`— así que cualquiera podría firmar un APK con la misma identidad.
 
 Distribución actual: se comparte el **APK** directamente (Ajustes → compartir APK, o el `.apk` generado).
 
@@ -296,7 +320,7 @@ código anterior. En el mismo paso se arregló el build de *release*, que estaba
 
 **Pendientes conocidos (menor riesgo):**
 - **Rendimiento:** el consumo acumulado sigue siendo O(semanas²) — cada semana se recalcula desde la 1. (`ResumenScreen` y `SemanaScreen` ya están resueltos: calculan una vez, en su ViewModel y fuera del hilo de UI.)
-- **Firma de release propia** (ver §12).
+- **Generar la keystore propia** de release: el build ya la lee de `keystore.properties`, solo falta crear la clave (ver §12).
 - **Accesibilidad:** `contentDescription` en íconos accionables; tamaños táctiles <48 dp en algunos chips/celdas.
 - Limpiar preferencias huérfanas (`ultima_semana_*`, `refs_excluidas_*`) al purgar un lote.
 - Ampliar los tests más allá del motor de cálculo (repositorios, importación `.davi`).
