@@ -105,4 +105,7 @@ dependencies {
 
     // Excel export
     implementation(libs.poi.ooxml)
+
+    // Tests unitarios del motor de cálculo (JVM puro, sin Android)
+    testImplementation(libs.junit)
 }

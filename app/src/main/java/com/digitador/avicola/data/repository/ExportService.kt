@@ -545,6 +545,12 @@ class ExportService @Inject constructor(
         var rowIdx = 0
         ajustarAnchos(sheet, 30)
 
+        // Referencias desechadas del cálculo, por semana: el Excel debe respetarlas
+        // igual que la pantalla.
+        val exclPorSem = state.partida?.let { p ->
+            state.semanas.associate { it.numero to config.refsExcluidas(p.uid, it.numero) }
+        } ?: emptyMap()
+
         // Encabezado
         sheet.createRow(rowIdx++).also { r ->
             r.createCell(0).apply { setCellValue("Galera: ${galera.nombre}"); setCellStyle(styles["header"]) }
@@ -578,62 +584,32 @@ class ExportService @Inject constructor(
                 for (parcela in corral.parcelas) {
                     val datosByPar = state.datosPorParcela[parcela.id] ?: emptyMap()
                     val dato = datosByPar[semNum] ?: DatoParcela(semNum, parcela.id)
-                    val inicio = Calculadora.getSaldoAnterior(semNum, parcela.id, parcela, datosByPar)
-                    val mort = dato.mort.sumOf { it ?: 0 }
-                    val saldo = inicio - mort
-                    
-                    val prom = dato.peso ?: 0.0
-                    val pesoTotal = prom * saldo
 
-                    var totalSem = 0.0; var totalSF = 0.0
-                    for (tipo in semana.refsActivas) {
-                        val saldoAnt = Calculadora.getSaldoAlimRef(semNum, parcela.id, tipo, datosByPar)
-                        val ref = dato.refs[tipo] ?: RefAlimento(tipo)
-                        totalSem += saldoAnt + (ref.ingreso ?: 0.0)
-                        totalSF  += ref.saldoFin ?: 0.0
-                    }
-                    // Alimento en KG → consumo por ave en gramos (× GRAMOS_POR_KG).
-                    val cons = (dato.consAjust ?: 0.0).let { if (it > 0) it else totalSem - totalSF }
-                    val consGave = if (saldo > 0 && cons > 0) cons * Calculadora.GRAMOS_POR_KG / saldo else 0.0
+                    // Único motor de cálculo: el mismo que alimenta la pantalla y el PDF.
+                    val m = Calculadora.computeMetricasParcela(
+                        parcela = parcela,
+                        semNum = semNum,
+                        todasSemanas = state.semanas,
+                        datosByParcela = datosByPar,
+                        refsExcluidasPorSemana = exclPorSem
+                    )
 
-                    // Consumo Acumulado
-                    var consAcumGave = 0.0
-                    var runningSaldo = parcela.inicio
-                    for (sn in 1..semNum) {
-                        val ds = datosByPar[sn]
-                        val s = state.semanas.find { it.numero == sn } ?: continue
-                        val ms = ds?.mort?.sumOf { it ?: 0 } ?: 0
-                        val sf = runningSaldo - ms
-                        if (sf > 0) {
-                            var tsRs = 0.0; var sfRs = 0.0
-                            for (tipo in s.refsActivas) {
-                                tsRs += (datosByPar[sn-1]?.refs?.get(tipo)?.saldoFin ?: 0.0) + (ds?.refs?.get(tipo)?.ingreso ?: 0.0)
-                                sfRs += ds?.refs?.get(tipo)?.saldoFin ?: 0.0
-                            }
-                            val aKg = (ds?.consAjust ?: 0.0).let { if (it > 0) it else tsRs - sfRs }
-                            consAcumGave += if (aKg > 0) aKg * Calculadora.GRAMOS_POR_KG / sf else 0.0
-                        }
-                        runningSaldo = sf
-                    }
-
-                    val prevProm = if (semNum > 1) {
-                        datosByPar[semNum - 1]?.peso ?: 0.0
-                    } else if (parcela.inicio > 0) parcela.pesoInicio / parcela.inicio else 0.0
-                    
-                    val gain = if (semNum == 1) {
-                        prom 
-                    } else if (prom > 0 && prevProm > 0) {
-                        prom - prevProm 
-                    } else 0.0
-
-                    val fcrSem = if (gain > 0 && consGave > 0) consGave / gain else 0.0
-                    val fcrAcum = if (prom > 0 && consAcumGave > 0) consAcumGave / prom else 0.0
-                    
-                    val mortAcum = (1..semNum).sumOf { datosByPar[it]?.mort?.sumOf { m -> m ?: 0 } ?: 0 }
-                    val mortAcumPct = if (parcela.inicio > 0) mortAcum.toDouble() / parcela.inicio else 0.0
-                    
-                    val ratio = if (semNum == 1 && prevProm > 0) prom / prevProm else 0.0
-                    val fcrAdj = if (semNum >= 5 && fcrAcum > 0 && prom > 0) fcrAcum + (2500.0 - prom) / 3200.0 else 0.0
+                    // La hoja deja la celda vacía cuando el indicador no aplica, y este
+                    // escritor usa 0.0 como "vacío"; por eso se aplanan los null.
+                    val inicio = m.saldoAnterior
+                    val mort = m.mortSem
+                    val saldo = m.saldo
+                    val prom = m.pesoGave
+                    val pesoTotal = m.pesoTotal
+                    val cons = m.alimKgSem
+                    val consGave = m.consGave
+                    val consAcumGave = m.consAcumGave
+                    val gain = m.gain
+                    val fcrSem = m.fcrSem ?: 0.0
+                    val fcrAcum = m.fcrAcum ?: 0.0
+                    val mortAcumPct = m.mortAcumPct
+                    val ratio = m.ratio ?: 0.0
+                    val fcrAdj = m.fcrAjustado(Calculadora.FCR_ADJ_OBJETIVO_2_5) ?: 0.0
 
                     val sInt = styles["int"]; val sD1 = styles["dec1"]; val sD3 = styles["dec3"]
                     val sPct = styles["pct"]; val sTxt = styles["text"]
@@ -685,6 +661,11 @@ class ExportService @Inject constructor(
             listOf("Ratio") +
             (if (opciones.incluirFcrAjustado) listOf("FCR AJ 2.5") else emptyList())
 
+        // Referencias desechadas del cálculo, por semana: igual que la pantalla.
+        val exclPorSem = state.partida?.let { p ->
+            state.semanas.associate { it.numero to config.refsExcluidas(p.uid, it.numero) }
+        } ?: emptyMap()
+
         for (semana in state.semanas) {
             sheet.createRow(rowIdx++).also { r ->
                 r.createCell(0).apply {
@@ -707,7 +688,8 @@ class ExportService @Inject constructor(
                         semNum          = semana.numero,
                         semana          = semana,
                         todasSemanas    = state.semanas,
-                        datosPorParcela = state.datosPorParcela
+                        datosPorParcela = state.datosPorParcela,
+                        refsExcluidasPorSemana = exclPorSem
                     )
                     val sInt = styles["int"]; val sD1 = styles["dec1"]; val sD3 = styles["dec3"]
                     val sPct = styles["pct"]; val sTxt = styles["text"]
@@ -790,83 +772,31 @@ class ExportService @Inject constructor(
                         val rep = pIdx + 1
 
                         val datosByPar = state.datosPorParcela[parcela.id] ?: emptyMap()
-                        val d = datosByPar[semNum] ?: DatoParcela(semNum, parcela.id)
-                        
-                        // Cálculos base
-                        val inicioSem = Calculadora.getSaldoAnterior(semNum, parcela.id, parcela, datosByPar)
-                        val mortSem = d.mort.sumOf { it ?: 0 }
-                        val saldoFin = inicioSem - mortSem
-                        val pesoGave = d.peso ?: 0.0
 
-                        // Consumo Semanal
-                        var tsR = 0.0; var sfR = 0.0
-                        val exclSem = exclPorSem[semNum] ?: emptySet()
-                        for (tipo in semana.refsActivas) {
-                            if (tipo in exclSem) continue   // referencia desechada del cálculo (esa semana)
-                            tsR += Calculadora.getSaldoAlimRef(semNum, parcela.id, tipo, datosByPar) + (d.refs[tipo]?.ingreso ?: 0.0)
-                            sfR += d.refs[tipo]?.saldoFin ?: 0.0
-                        }
-                        // Alimento en KG → consumo por ave en gramos (× GRAMOS_POR_KG).
-                        val alimKg = (d.consAjust?.takeIf { it >= 0.0 }) ?: (tsR - sfR)
-                        val consGaveSem = if (saldoFin > 0 && alimKg > 0) alimKg * Calculadora.GRAMOS_POR_KG / saldoFin else 0.0
+                        // Único motor de cálculo: el mismo que alimenta la pantalla y el PDF.
+                        val m = Calculadora.computeMetricasParcela(
+                            parcela = parcela,
+                            semNum = semNum,
+                            todasSemanas = state.semanas,
+                            datosByParcela = datosByPar,
+                            refsExcluidasPorSemana = exclPorSem
+                        )
 
-                        // Consumo Acumulado
-                        var consAcumGave = 0.0
-                        var runningSaldo = parcela.inicio
-                        for (sn in 1..semNum) {
-                            val ds = datosByPar[sn]
-                            val s = state.semanas.find { it.numero == sn } ?: continue
-                            val ms = ds?.mort?.sumOf { it ?: 0 } ?: 0
-                            val sf = runningSaldo - ms
-                            if (sf > 0) {
-                                var tsRs = 0.0; var sfRs = 0.0
-                                val exclSn = exclPorSem[sn] ?: emptySet()
-                                for (tipo in s.refsActivas) {
-                                    if (tipo in exclSn) continue   // referencia desechada del cálculo (esa semana)
-                                    tsRs += (datosByPar[sn-1]?.refs?.get(tipo)?.saldoFin ?: 0.0) + (ds?.refs?.get(tipo)?.ingreso ?: 0.0)
-                                    sfRs += ds?.refs?.get(tipo)?.saldoFin ?: 0.0
-                                }
-                                val aKg = (ds?.consAjust?.takeIf { it >= 0.0 }) ?: (tsRs - sfRs)
-                                consAcumGave += if (aKg > 0) aKg * Calculadora.GRAMOS_POR_KG / sf else 0.0
-                            }
-                            runningSaldo = sf
-                        }
-
-                        // GDP y FCR
-                        val gainSem = if (semNum == 1) {
-                            pesoGave
-                        } else {
-                            val prevPeso = if (semNum > 1) datosByPar[semNum - 1]?.peso ?: 0.0 else 0.0
-                            if (pesoGave > 0 && prevPeso > 0) pesoGave - prevPeso else 0.0
-                        }
-
-                        val fcrSem = if (gainSem > 0 && consGaveSem > 0) consGaveSem / gainSem else 0.0
-                        val fcrAcum = if (pesoGave > 0 && consAcumGave > 0) consAcumGave / pesoGave else 0.0
-                        
-                        val gdpSem = gainSem / 7.0
-                        val gdpLin = if (pesoGave > 0) pesoGave / (semNum * 7.0) else 0.0
-                        
-                        val mortPct = if (inicioSem > 0) (mortSem.toDouble() / inicioSem) else 0.0
-                        
-                        var totMortAcum = 0
-                        for (sn in 1..semNum) totMortAcum += (datosByPar[sn]?.mort?.sumOf { it ?: 0 } ?: 0)
-                        val mortAcumPct = if (parcela.inicio > 0) (totMortAcum.toDouble() / parcela.inicio) else 0.0
-                        
-                        // El ratio: Peso Presente / Peso Pasado (o inicial en W1)
-                        // Según requerimiento, solo se muestra en la Semana 1
-                        val actualPrevPeso = if (semNum == 1) {
-                            if (parcela.inicio > 0) parcela.pesoInicio / parcela.inicio else 0.0
-                        } else {
-                            datosByPar[semNum - 1]?.peso ?: 0.0
-                        }
-                        
-                        val ratio = if (semNum == 1 && actualPrevPeso > 0) pesoGave / actualPrevPeso else 0.0
-
-                        // FCR Ajustado (Standard Factor 3.2 kg o 3200g)
-                        // Solo se calculan a partir de la semana 5
-                        val fcrAdj25 = if (semNum >= 5 && fcrAcum > 0 && pesoGave > 0) fcrAcum + (2500.0 - pesoGave) / 3200.0 else 0.0
-                        val fcrAdj20 = if (semNum >= 5 && fcrAcum > 0 && pesoGave > 0) fcrAcum + (2000.0 - pesoGave) / 3200.0 else 0.0
-                        val fcrAdj27 = if (semNum >= 5 && fcrAcum > 0 && pesoGave > 0) fcrAcum + (2700.0 - pesoGave) / 3200.0 else 0.0
+                        // La tabla deja la celda vacía cuando el indicador no aplica, y
+                        // este escritor usa 0.0 como "vacío"; por eso se aplanan los null.
+                        val pesoGave = m.pesoGave
+                        val consGaveSem = m.consGave
+                        val consAcumGave = m.consAcumGave
+                        val fcrSem = m.fcrSem ?: 0.0
+                        val fcrAcum = m.fcrAcum ?: 0.0
+                        val gdpSem = m.gdpSem
+                        val gdpLin = m.gdpLineal
+                        val mortPct = m.mortPct
+                        val mortAcumPct = m.mortAcumPct
+                        val ratio = m.ratio ?: 0.0
+                        val fcrAdj20 = m.fcrAjustado(Calculadora.FCR_ADJ_OBJETIVO_2_0) ?: 0.0
+                        val fcrAdj25 = m.fcrAjustado(Calculadora.FCR_ADJ_OBJETIVO_2_5) ?: 0.0
+                        val fcrAdj27 = m.fcrAjustado(Calculadora.FCR_ADJ_OBJETIVO_2_7) ?: 0.0
 
                         val sInt = styles["int"]; val sD1 = styles["dec1"]; val sD3 = styles["dec3"]
                         val sPct = styles["pct"]; val sTxt = styles["text"]

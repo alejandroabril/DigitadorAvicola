@@ -180,7 +180,12 @@ Toda la matemática está en [`domain/Calculadora.kt`](app/src/main/java/com/dig
 | **FEP** (opcional) | `(viabilidad × peso_kg) / (edad_días × FCRacum) × 100`. |
 | **FCR ajustado** (sem ≥5, opcional) | `FCRacum + (2500 − pesoProm) / 3200`. |
 
-> ⚠️ Esta lógica está **parcialmente duplicada** en `ExportService` (Excel/PDF). Si cambiás una fórmula, hay que tocar **los dos lados**. (Unificar en un solo motor es un pendiente — ver §15.)
+> ✅ **Un solo motor.** La unidad de cálculo es la jaula: `Calculadora.computeMetricasParcela`
+> devuelve un `MetricasParcela` con todos los indicadores. `computeMetricasCorral` no
+> recalcula nada, solo pondera esas métricas por saldo de aves, y el Excel escribe esas
+> mismas métricas fila a fila. Para cambiar una fórmula se toca **un solo sitio**.
+> `CalculadoraEquivalenciaTest` compara el motor contra una copia del código anterior
+> para que ningún cambio mueva los números sin querer.
 
 `validarSemana` / `calcProgreso` calculan completitud para habilitar el cierre de semana y la barra de progreso.
 
@@ -285,13 +290,19 @@ Distribución actual: se comparte el **APK** directamente (Ajustes → compartir
 
 Tras una auditoría completa (2026-06) se corrigieron los puntos críticos: **autosave** en digitación, **transacciones** atómicas, **migraciones reales** de Room, **PIN hasheado**, `allowBackup=false`, manejo de errores en importación, limpieza de cache, y varios más.
 
+En 2026-09 se **unificó el motor de cálculo** (ver §7): `ExportService` ya no reimplementa
+ninguna fórmula, y `app/src/test/` cubre el motor con tests de equivalencia contra el
+código anterior. En el mismo paso se arregló el build de *release*, que estaba roto.
+
 **Pendientes conocidos (menor riesgo):**
-- **Unificar el motor de cálculo** `Calculadora` ↔ `ExportService` (hoy duplicado y puede divergir).
 - **Rendimiento:** memoizar métricas en `ResumenScreen` (doble cómputo) y `getProgreso` en `SemanaScreen`; el consumo acumulado es O(semanas²).
 - **Firma de release propia** (ver §12).
 - **Accesibilidad:** `contentDescription` en íconos accionables; tamaños táctiles <48 dp en algunos chips/celdas.
 - Limpiar preferencias huérfanas (`ultima_semana_*`, `refs_excluidas_*`) al purgar un lote.
-- Falta de **tests automatizados** (sobre todo de `Calculadora`).
+- Ampliar los tests más allá del motor de cálculo (repositorios, importación `.davi`).
+- En la hoja por galera, la columna **"Consumo(g)"** trae kilogramos, no gramos: el
+  encabezado miente. Esa hoja está deshabilitada hoy, pero hay que corregirlo antes de
+  reactivarla.
 
 ---
 

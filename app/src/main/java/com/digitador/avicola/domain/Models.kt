@@ -72,16 +72,72 @@ data class RefAlimento(
 
 // ── Resultados de cálculo ─────────────────────────────────────
 
+/**
+ * Resultado del cálculo de UNA jaula en UNA semana. Es la unidad básica del motor:
+ * [Calculadora.computeMetricasParcela] la produce, la pantalla la agrega por corral
+ * ([MetricasCorral]) y el export la escribe fila a fila. Los indicadores derivados
+ * viven aquí como propiedades para que pantalla y Excel no puedan divergir.
+ *
+ * Los pesos van en GRAMOS por ave; el alimento, en KILOGRAMOS por jaula.
+ */
+@Immutable
 data class MetricasParcela(
-    val inicio: Int,
-    val mort: Int,
+    val semNum: Int,
+    /** Aves con las que la jaula arrancó el lote (`Parcela.inicio`). */
+    val inicioLote: Int,
+    /** Aves vivas al empezar la semana (nunca negativo). */
+    val saldoAnterior: Int,
+    val mortSem: Int,
+    /** Aves vivas al cerrar la semana. Puede ser ≤ 0 si la mortalidad está mal digitada. */
     val saldo: Int,
-    val pesoTotal: Double,
-    val promGave: Double,
-    val consumoSem: Double,
+    /** Mortalidad acumulada desde el inicio del lote hasta esta semana. */
+    val mortAcum: Int,
+    /** Peso promedio digitado esta semana (g/ave). 0 si no se digitó. */
+    val pesoGave: Double,
+    /** Peso g/ave de la semana anterior; en la semana 1, el peso medio de recepción. */
+    val pesoPrevio: Double,
+    /** Peso medio de recepción de la jaula (g/ave). Base del CGR. */
+    val pesoRecepcion: Double,
+    /** Ganancia de peso de la semana (g/ave). En la semana 1 es todo el peso. */
+    val gain: Double,
+    /** Alimento consumido en la semana (kg de la jaula). */
+    val alimKgSem: Double,
+    /** Consumo de la semana (g/ave). */
     val consGave: Double,
-    val cgr: Double
-)
+    /** Consumo acumulado desde la semana 1 (g/ave). */
+    val consAcumGave: Double
+) {
+    val pesoTotal: Double get() = pesoGave * saldo
+    val gdpSem: Double get() = gain / Calculadora.DIAS_POR_SEMANA
+    val gdpLineal: Double get() =
+        if (pesoGave > 0) pesoGave / (semNum * Calculadora.DIAS_POR_SEMANA) else 0.0
+
+    val fcrSem: Double? get() = if (gain > 0 && consGave > 0) consGave / gain else null
+    val fcrAcum: Double? get() = if (pesoGave > 0 && consAcumGave > 0) consAcumGave / pesoGave else null
+
+    /** Mortalidad de la semana como fracción de las aves con que empezó la semana. */
+    val mortPct: Double get() = if (saldoAnterior > 0) mortSem.toDouble() / saldoAnterior else 0.0
+    /** Mortalidad acumulada como fracción de las aves con que arrancó el lote. */
+    val mortAcumPct: Double get() = if (inicioLote > 0) mortAcum.toDouble() / inicioLote else 0.0
+
+    /** Crecimiento relativo respecto al peso de recepción (Peso / Peso inicial). */
+    val cgr: Double? get() =
+        if (pesoGave > 0 && pesoRecepcion > 0) pesoGave / pesoRecepcion else null
+
+    /** Peso presente / peso pasado. Solo tiene sentido —y se reporta— en la semana 1. */
+    val ratio: Double? get() =
+        if (semNum == 1 && pesoPrevio > 0 && pesoGave > 0) pesoGave / pesoPrevio else null
+
+    /**
+     * FCR acumulado corregido hacia un peso objetivo (g), con el factor estándar del
+     * ensayo. Solo desde [Calculadora.FCR_ADJ_DESDE_SEMANA]; antes no es representativo.
+     */
+    fun fcrAjustado(objetivoG: Double): Double? {
+        val acum = fcrAcum ?: return null
+        if (semNum < Calculadora.FCR_ADJ_DESDE_SEMANA || pesoGave <= 0) return null
+        return acum + (objetivoG - pesoGave) / Calculadora.FCR_ADJ_FACTOR
+    }
+}
 
 data class MetricasCorral(
     val saldo: Int,

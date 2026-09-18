@@ -2,11 +2,29 @@ package com.digitador.avicola.domain
 
 import kotlin.math.sqrt
 
+/**
+ * Motor de cálculo del ensayo. **Única** implementación de las fórmulas: la pantalla,
+ * el PDF y el Excel consumen todos este objeto, así que no pueden dar números distintos.
+ *
+ * La unidad básica es la jaula ([computeMetricasParcela]); [computeMetricasCorral] no
+ * recalcula nada, solo pondera esas métricas por saldo de aves.
+ */
 object Calculadora {
 
     /** El alimento (ingreso/saldo/ajuste) se digita en KILOGRAMOS; el consumo por
      *  ave se expresa en GRAMOS, por eso se multiplica por este factor al dividir. */
     const val GRAMOS_POR_KG = 1000.0
+
+    const val DIAS_POR_SEMANA = 7.0
+
+    /** Antes de esta semana el FCR ajustado no es representativo, así que no se reporta. */
+    const val FCR_ADJ_DESDE_SEMANA = 5
+    /** Factor estándar del ensayo para corregir el FCR hacia un peso objetivo. */
+    const val FCR_ADJ_FACTOR = 3200.0
+    /** Pesos objetivo (g) del FCR ajustado que reporta el Excel. */
+    const val FCR_ADJ_OBJETIVO_2_0 = 2000.0
+    const val FCR_ADJ_OBJETIVO_2_5 = 2500.0
+    const val FCR_ADJ_OBJETIVO_2_7 = 2700.0
 
     // Saldo de aves al inicio de la semana (Optimizado: iterativo)
     fun getSaldoAnterior(
@@ -36,7 +54,115 @@ object Calculadora {
         return datosByParcela[semNum - 1]?.refs?.get(tipo)?.saldoFin ?: 0.0
     }
 
-    // Métricas de un corral (SUMAPRODUCTO ponderado por saldo)
+    /**
+     * Alimento consumido por una jaula en [semNum], en KG.
+     *
+     * Si hay ajuste manual (`consAjust`) no negativo, REEMPLAZA el cálculo por
+     * referencias — incluido un 0 explícito; `null` significa "sin ajuste". Las
+     * referencias marcadas como excluidas esa semana no entran en la cuenta.
+     */
+    private fun alimentoKgSemana(
+        semNum: Int,
+        semana: Semana,
+        datosByParcela: Map<Int, DatoParcela>,
+        refsExcluidas: Set<String>
+    ): Double {
+        val d = datosByParcela[semNum]
+        d?.consAjust?.takeIf { it >= 0.0 }?.let { return it }
+
+        var entradas = 0.0
+        var saldoFinal = 0.0
+        for (tipo in semana.refsActivas) {
+            if (tipo in refsExcluidas) continue
+            entradas += getSaldoAlimRef(semNum, "", tipo, datosByParcela) + (d?.refs?.get(tipo)?.ingreso ?: 0.0)
+            saldoFinal += d?.refs?.get(tipo)?.saldoFin ?: 0.0
+        }
+        return entradas - saldoFinal
+    }
+
+    /**
+     * Métricas de UNA jaula en [semNum]. Recorre el lote una sola vez desde la semana 1
+     * para arrastrar saldo de aves, mortalidad acumulada y consumo acumulado.
+     *
+     * La mortalidad siempre se acumula (es un dato de la jaula); el consumo de una
+     * semana solo se calcula si esa semana existe en [todasSemanas], porque sin ella
+     * no se sabe qué alimentos estaban activos.
+     */
+    fun computeMetricasParcela(
+        parcela: Parcela,
+        semNum: Int,
+        todasSemanas: List<Semana>,
+        datosByParcela: Map<Int, DatoParcela>,
+        refsExcluidasPorSemana: Map<Int, Set<String>> = emptyMap()
+    ): MetricasParcela {
+        var runningSaldo = parcela.inicio
+        var mortAcum = 0
+        var consAcumGave = 0.0
+
+        var saldoAnterior = parcela.inicio
+        var mortSem = 0
+        var alimKgSem = 0.0
+        var consGave = 0.0
+
+        for (sn in 1..semNum) {
+            val d = datosByParcela[sn]
+            val mort = d?.mort?.sumOf { it ?: 0 } ?: 0
+            mortAcum += mort
+            val saldoAlCerrar = runningSaldo - mort
+
+            val semana = todasSemanas.find { it.numero == sn }
+            val alimKg = if (semana == null) 0.0
+                else alimentoKgSemana(sn, semana, datosByParcela, refsExcluidasPorSemana[sn] ?: emptySet())
+
+            if (saldoAlCerrar > 0 && alimKg > 0) {
+                consAcumGave += alimKg * GRAMOS_POR_KG / saldoAlCerrar
+            }
+
+            if (sn == semNum) {
+                // El saldo REPORTADO nunca es negativo, aunque el arrastre interno sí
+                // pueda serlo con mortalidad mal digitada.
+                saldoAnterior = runningSaldo.coerceAtLeast(0)
+                mortSem = mort
+                alimKgSem = alimKg
+                val saldoFin = saldoAnterior - mort
+                consGave = if (saldoFin > 0 && alimKg > 0) alimKg * GRAMOS_POR_KG / saldoFin else 0.0
+            }
+
+            runningSaldo = saldoAlCerrar
+        }
+
+        val pesoGave = datosByParcela[semNum]?.peso ?: 0.0
+        val pesoRecepcion = if (parcela.inicio > 0) parcela.pesoInicio / parcela.inicio else 0.0
+        val pesoPrevio = if (semNum > 1) datosByParcela[semNum - 1]?.peso ?: 0.0 else pesoRecepcion
+
+        // Ganancia de peso: en la SEMANA 1 se toma todo el peso (según la planilla del
+        // ensayo); desde la 2 se resta el peso de la semana anterior.
+        val gain = if (semNum == 1) pesoGave
+            else if (pesoGave > 0 && pesoPrevio > 0) pesoGave - pesoPrevio
+            else 0.0
+
+        return MetricasParcela(
+            semNum = semNum,
+            inicioLote = parcela.inicio,
+            saldoAnterior = saldoAnterior,
+            mortSem = mortSem,
+            saldo = saldoAnterior - mortSem,
+            mortAcum = mortAcum,
+            pesoGave = pesoGave,
+            pesoPrevio = pesoPrevio,
+            pesoRecepcion = pesoRecepcion,
+            gain = gain,
+            alimKgSem = alimKgSem,
+            consGave = consGave,
+            consAcumGave = consAcumGave
+        )
+    }
+
+    /**
+     * Métricas de un corral (tratamiento): promedio ponderado por saldo de aves de las
+     * métricas de sus jaulas — el SUMAPRODUCTO de la planilla. Las jaulas sin aves vivas
+     * no pesan en los promedios, pero sí cuentan para la mortalidad acumulada.
+     */
     fun computeMetricasCorral(
         corral: Corral,
         semNum: Int,
@@ -47,45 +173,11 @@ object Calculadora {
     ): MetricasCorral? {
         if (corral.parcelas.isEmpty()) return null
 
-        val consumoAcumByParcela = mutableMapOf<String, Double>()
-        val mortAcumByParcela = mutableMapOf<String, Int>()
+        // La semana que se está viendo manda, aunque no esté en la lista recibida.
+        val semanas = if (todasSemanas.any { it.numero == semNum }) todasSemanas else todasSemanas + semana
 
-        for (par in corral.parcelas) {
-            val datosByPar = datosPorParcela[par.id] ?: emptyMap()
-            var consumoAcum = 0.0
-            var mortAcum = 0
-            var runningSaldo = par.inicio
-            
-            for (sn in 1..semNum) {
-                val s = todasSemanas.find { it.numero == sn } ?: continue
-                val d = datosByPar[sn]
-
-                val mort = d?.mort?.sumOf { it ?: 0 } ?: 0
-                val saldoActual = runningSaldo - mort
-                mortAcum += mort
-
-                if (saldoActual > 0) {
-                    var tsR = 0.0; var sfR = 0.0
-                    val exclSn = refsExcluidasPorSemana[sn] ?: emptySet()
-                    for (tipo in s.refsActivas) {
-                        if (tipo in exclSn) continue   // referencia desechada del cálculo (esa semana)
-                        // Saldo anterior del alimento es el saldo fin del anterior
-                        val saldoAntAlim = if (sn == 1) 0.0 else (datosByPar[sn-1]?.refs?.get(tipo)?.saldoFin ?: 0.0)
-                        tsR += saldoAntAlim + (d?.refs?.get(tipo)?.ingreso ?: 0.0)
-                        sfR += d?.refs?.get(tipo)?.saldoFin ?: 0.0
-                    }
-                    // consAjust, si está presente y no es negativo, REEMPLAZA el cálculo
-                    // por referencias (incluido un ajuste explícito de 0). null = sin ajuste.
-                    // Alimento (ING/SAL/ADJ) se digita en KG → consumo por ave en gramos.
-                    val alimKg = (d?.consAjust?.takeIf { it >= 0.0 }) ?: (tsR - sfR)
-                    if (alimKg > 0) {
-                        consumoAcum += alimKg * GRAMOS_POR_KG / saldoActual
-                    }
-                }
-                runningSaldo = saldoActual
-            }
-            consumoAcumByParcela[par.id] = consumoAcum
-            mortAcumByParcela[par.id] = mortAcum
+        val metricas = corral.parcelas.map { par ->
+            computeMetricasParcela(par, semNum, semanas, datosPorParcela[par.id] ?: emptyMap(), refsExcluidasPorSemana)
         }
 
         var totSaldo = 0
@@ -98,77 +190,36 @@ object Calculadora {
         var spFcr = 0.0
         var fcrCount = 0
         var spGdp = 0.0
-        
         var spCgr = 0.0
         var cgrCount = 0
         val promArr = mutableListOf<Double>()
 
-        for (par in corral.parcelas) {
-            val datosByPar = datosPorParcela[par.id] ?: emptyMap()
-            val saldoAnt = getSaldoAnterior(semNum, par.id, par, datosByPar)
-            val d = datosByPar[semNum]
-            val mort = d?.mort?.sumOf { it ?: 0 } ?: 0
-            val saldo = saldoAnt - mort
-            
-            totInicio += par.inicio
-            totMortAcum += (mortAcumByParcela[par.id] ?: 0)
+        for (m in metricas) {
+            totInicio += m.inicioLote
+            totMortAcum += m.mortAcum
 
+            val saldo = m.saldo
             if (saldo <= 0) continue
             totSaldo += saldo
 
-            val pesoGave = d?.peso ?: 0.0
-            if (pesoGave > 0) { 
-                spPeso += pesoGave * saldo
-                promArr.add(pesoGave) 
+            if (m.pesoGave > 0) {
+                spPeso += m.pesoGave * saldo
+                promArr.add(m.pesoGave)
             }
+            if (m.pesoPrevio > 0) spPrevPeso += m.pesoPrevio * saldo
 
-            // Ganancia de peso (Gain): 
-            // En SEMANA 1 se toma todo el peso (según estadisticas_ejemplo.csv)
-            // En SEMANAS 2+ se resta el peso anterior.
-            val gain = if (semNum == 1) {
-                pesoGave
-            } else {
-                val prevGave = if (semNum > 1) datosByPar[semNum - 1]?.peso ?: 0.0 else 0.0
-                if (pesoGave > 0 && prevGave > 0) pesoGave - prevGave else 0.0
-            }
-            
-            // Peso previo real (solo para el cálculo de spPrevPeso / Ratio)
-            val actualPrevGave = if (semNum > 1) {
-                datosByPar[semNum - 1]?.peso ?: 0.0
-            } else if (par.inicio > 0) {
-                par.pesoInicio / par.inicio
-            } else 0.0
-            
-            if (actualPrevGave > 0) spPrevPeso += actualPrevGave * saldo
+            spCons += m.consGave * saldo
+            spConsAcum += m.consAcumGave * saldo
 
-            // Consumo semanal
-            var tsR = 0.0; var sfR = 0.0
-            val exclSem = refsExcluidasPorSemana[semNum] ?: emptySet()
-            for (tipo in semana.refsActivas) {
-                if (tipo in exclSem) continue   // referencia desechada del cálculo (esa semana)
-                tsR += getSaldoAlimRef(semNum, par.id, tipo, datosByPar) + (d?.refs?.get(tipo)?.ingreso ?: 0.0)
-                sfR += d?.refs?.get(tipo)?.saldoFin ?: 0.0
-            }
-            // consAjust, si está presente y no es negativo, REEMPLAZA el cálculo por
-            // referencias (incluido 0 explícito). null = sin ajuste → se usa el de refs.
-            // Alimento (ING/SAL/ADJ) se digita en KG → consumo por ave en gramos.
-            val alimKg = (d?.consAjust?.takeIf { it >= 0.0 }) ?: (tsR - sfR)
-            val consGave = if (alimKg > 0) alimKg * GRAMOS_POR_KG / saldo else 0.0
-            spCons += consGave * saldo
-
-            val cAcum = consumoAcumByParcela[par.id] ?: 0.0
-            spConsAcum += cAcum * saldo
-
-            if (gain > 0) {
-                spGdp += (gain / 7.0) * saldo
-                if (consGave > 0) {
-                    spFcr += (consGave / gain) * saldo
+            if (m.gain > 0) {
+                spGdp += m.gdpSem * saldo
+                if (m.consGave > 0) {
+                    spFcr += (m.consGave / m.gain) * saldo
                     fcrCount += saldo
                 }
             }
 
-            val promInicio = if (par.inicio > 0) par.pesoInicio / par.inicio else 0.0
-            if (pesoGave > 0 && promInicio > 0) { spCgr += (pesoGave / promInicio) * saldo; cgrCount += saldo }
+            m.cgr?.let { spCgr += it * saldo; cgrCount += saldo }
         }
 
         if (totSaldo <= 0) return null
@@ -176,20 +227,24 @@ object Calculadora {
         val promPeso = spPeso / totSaldo
         val consumoGave = spCons / totSaldo
         val consumoAcum = spConsAcum / totSaldo
-        
-        // FCR Semanal calculado como el promedio ponderado de los FCRs de las parcelas
+
+        // FCR semanal = promedio ponderado de los FCR de las jaulas.
         val fcrSem = if (fcrCount > 0) spFcr / fcrCount else null
         val fcrAcum = if (promPeso > 0 && consumoAcum > 0) consumoAcum / promPeso else null
-        
+
         val mortAcumPct = if (totInicio > 0) totMortAcum.toDouble() / totInicio else 0.0
-        val edadDias = semNum * 7.0
-        
+        val edadDias = semNum * DIAS_POR_SEMANA
+
         val fep = if (fcrAcum != null && fcrAcum > 0 && edadDias > 0) {
             val viabilidad = 1.0 - mortAcumPct
             ((viabilidad * (promPeso / 1000.0)) / (edadDias * fcrAcum)) * 100.0
         } else null
 
-        val fcrAdj = if (semNum >= 5 && fcrAcum != null && promPeso > 0) fcrAcum + (2500.0 - promPeso) / 3200.0 else null
+        val fcrAdj = if (semNum >= FCR_ADJ_DESDE_SEMANA && fcrAcum != null && promPeso > 0)
+            fcrAcum + (FCR_ADJ_OBJETIVO_2_5 - promPeso) / FCR_ADJ_FACTOR else null
+
+        // El ratio del corral se calcula sobre los promedios ponderados, no promediando
+        // los ratios de cada jaula.
         val ratio = if (semNum == 1 && spPrevPeso > 0) promPeso / (spPrevPeso / totSaldo) else null
 
         return MetricasCorral(
