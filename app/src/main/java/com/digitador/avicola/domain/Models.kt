@@ -157,6 +157,17 @@ data class MetricasCorral(
 )
 
 /**
+ * KPIs del lote entero en una semana: promedios ponderados por saldo de aves sobre
+ * las métricas de cada tratamiento. Ver [Calculadora.agregarKpiGlobal].
+ */
+@Immutable
+data class KpiGlobal(
+    val saldo: Int = 0,
+    val pesoProm: Double = 0.0,
+    val fcrSem: Double = 0.0
+)
+
+/**
  * Coeficiente de variación del peso de un grupo de jaulas (tratamiento, galera o
  * todo el lote). Se calcula como en la planilla: desviación estándar MUESTRAL (n−1)
  * de los pesos promedio de las jaulas, dividida por el promedio.

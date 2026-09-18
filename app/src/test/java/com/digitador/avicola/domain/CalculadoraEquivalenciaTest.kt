@@ -213,6 +213,46 @@ class CalculadoraEquivalenciaTest {
         assertTrue("el generador no produjo semanas con aves vivas", semanasConAves > 50)
     }
 
+    /**
+     * El KPI global que muestra la cabecera de "Análisis de la semana" antes se
+     * calculaba dentro del Composable. Aquí se fija el criterio: promedio ponderado
+     * por saldo, y el FCR solo pondera las jaulas que tienen FCR.
+     */
+    @Test
+    fun `el KPI global pondera por saldo de aves`() {
+        val rnd = Random(3)
+        val (corral, semanas, datos) = lote(rnd, 5)
+        val excl = exclusiones(rnd, semanas)
+
+        for (sem in semanas) {
+            val metricas = listOfNotNull(
+                Calculadora.computeMetricasCorral(corral, sem.numero, sem, semanas, datos, excl)
+            )
+            val kpi = Calculadora.agregarKpiGlobal(metricas)
+            val ctx = "sem=${sem.numero}"
+
+            assertEquals("$ctx saldo", metricas.sumOf { it.saldo }, kpi.saldo)
+            if (kpi.saldo > 0) {
+                val pesoEsperado = metricas.sumOf { it.promPeso * it.saldo } / metricas.sumOf { it.saldo }
+                assertEquals("$ctx pesoProm", pesoEsperado, kpi.pesoProm, tol)
+            }
+            // Un corral sin FCR no debe arrastrar el promedio hacia abajo.
+            val conFcr = metricas.filter { it.fcrSem != null }
+            val fcrEsperado = if (conFcr.isEmpty()) 0.0
+                else conFcr.sumOf { it.fcrSem!! * it.saldo } / conFcr.sumOf { it.saldo }
+            assertEquals("$ctx fcrSem", fcrEsperado, kpi.fcrSem, tol)
+        }
+    }
+
+    /** Sin tratamientos con aves, la cabecera no inventa promedios. */
+    @Test
+    fun `el KPI global de un lote vacio es cero`() {
+        val kpi = Calculadora.agregarKpiGlobal(emptyList())
+        assertEquals(0, kpi.saldo)
+        assertEquals(0.0, kpi.pesoProm, tol)
+        assertEquals(0.0, kpi.fcrSem, tol)
+    }
+
     /** Un ajuste manual de 0 kg significa "no consumió", no "calcúlalo por referencias". */
     @Test
     fun `ajuste de consumo en cero se respeta`() {

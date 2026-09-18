@@ -97,7 +97,7 @@ fun ResumenScreen(
         ) {
             // ── KPIs DEL LOTE (GLOBAL) ──
             item {
-                GlobalKpiCard(st, semanaNumero, vm.refsExcluidasPorSemana(semanaNumero))
+                GlobalKpiCard(ui.global)
             }
 
             // ── LISTADO UNIFICADO POR GALERA ──
@@ -118,7 +118,7 @@ fun ResumenScreen(
                             }
 
                             galera.corrales.forEach { corral ->
-                                val metricas = vm.getMetricasCorral(galera, corral, semanaNumero)
+                                val metricas = ui.metricasPorCorral[corral.id]
                                 CorralAnalysisRow(corral, metricas)
                                 HorizontalDivider(color = Line.copy(alpha = 0.3f), thickness = 0.5.dp)
                             }
@@ -229,46 +229,27 @@ fun ResumenScreen(
 }
 
 @Composable
-private fun GlobalKpiCard(state: AppState, semNum: Int, refsExcluidasPorSemana: Map<Int, Set<String>> = emptyMap()) {
-    val partida = state.partida
-    val semana = state.getSemana(semNum)
-
-    var totSaldo = 0
-    var spPeso = 0.0
-    var spFcr = 0.0
-    var fcrCount = 0
-
-    partida?.galeras?.forEach { g ->
-        g.corrales.forEach { c ->
-            if (semana != null) {
-                val m = Calculadora.computeMetricasCorral(
-                    corral = c, semNum = semNum, semana = semana,
-                    todasSemanas = state.semanas, datosPorParcela = state.datosPorParcela,
-                    refsExcluidasPorSemana = refsExcluidasPorSemana
-                )
-                if (m != null) {
-                    totSaldo += m.saldo
-                    spPeso += m.promPeso * m.saldo
-                    m.fcrSem?.let { fcr ->
-                        spFcr += fcr * m.saldo
-                        fcrCount += m.saldo
-                    }
-                }
-            }
-        }
-    }
-
-    val avgPeso = if (totSaldo > 0) spPeso / totSaldo else 0.0
-    val avgFcr = if (fcrCount > 0) spFcr / fcrCount else 0.0
-
+private fun GlobalKpiCard(global: KpiGlobal) {
     AppPanel(title = "Rendimiento Global") {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            KpiItem("Saldo Aves", String.format(Locale.US, "%,d", totSaldo).replace(',', '.'), Modifier.weight(1f))
-            KpiItem("Peso Prom.", if (avgPeso > 0) String.format(Locale.US, "%.0fg", avgPeso) else "—", Modifier.weight(1f))
-            KpiItem("FCR Sem.", if (avgFcr > 0) String.format(Locale.US, "%.3f", avgFcr) else "—", Modifier.weight(1f))
+            KpiItem(
+                "Saldo Aves",
+                String.format(Locale.US, "%,d", global.saldo).replace(',', '.'),
+                Modifier.weight(1f)
+            )
+            KpiItem(
+                "Peso Prom.",
+                if (global.pesoProm > 0) String.format(Locale.US, "%.0fg", global.pesoProm) else "—",
+                Modifier.weight(1f)
+            )
+            KpiItem(
+                "FCR Sem.",
+                if (global.fcrSem > 0) String.format(Locale.US, "%.3f", global.fcrSem) else "—",
+                Modifier.weight(1f)
+            )
         }
     }
 }

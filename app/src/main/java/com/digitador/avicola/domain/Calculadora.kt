@@ -266,6 +266,33 @@ object Calculadora {
     }
 
     /**
+     * KPIs del lote a partir de las métricas YA calculadas de sus tratamientos:
+     * mismo criterio que dentro del corral, promedio ponderado por saldo de aves.
+     * Recibe las métricas en vez de recalcularlas para no recorrer el lote dos veces.
+     */
+    fun agregarKpiGlobal(metricas: Collection<MetricasCorral>): KpiGlobal {
+        var totSaldo = 0
+        var spPeso = 0.0
+        var spFcr = 0.0
+        var fcrCount = 0
+
+        for (m in metricas) {
+            totSaldo += m.saldo
+            spPeso += m.promPeso * m.saldo
+            m.fcrSem?.let { fcr ->
+                spFcr += fcr * m.saldo
+                fcrCount += m.saldo
+            }
+        }
+
+        return KpiGlobal(
+            saldo = totSaldo,
+            pesoProm = if (totSaldo > 0) spPeso / totSaldo else 0.0,
+            fcrSem = if (fcrCount > 0) spFcr / fcrCount else 0.0
+        )
+    }
+
+    /**
      * Valida que una semana esté COMPLETAMENTE digitada: cada parcela con aves debe
      * tener peso y, para cada alimento activo, ingreso y saldo final. Devuelve
      * cuántas parcelas faltan por cada concepto.
