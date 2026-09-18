@@ -7,15 +7,23 @@ import com.digitador.avicola.data.repository.ConfigRepository
 import com.digitador.avicola.data.repository.DigitadorRepository
 import com.digitador.avicola.domain.*
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class SemanaUiState(
     val appState: AppState = AppState(),
     val semanaActual: Int = 1,
+    /**
+     * Progreso de digitación de cada semana, ya calculado. La barra de navegación
+     * pinta un porcentaje por semana; calcularlo durante la composición significaba
+     * recorrer el lote entero una vez por cada semana, en cada recomposición.
+     */
+    val progresoPorSemana: Map<Int, ProgresoSemana> = emptyMap(),
     val loading: Boolean = true,
     val showResetDialog: Boolean = false,
     val showDeleteConfirm: Boolean = false,
@@ -47,8 +55,19 @@ class SemanaViewModel @Inject constructor(
         viewModelScope.launch {
             repo.appState.collect { state ->
                 _ui.update { it.copy(appState = state) }
+                // El progreso recorre todas las jaulas de todas las semanas. Durante la
+                // digitación el estado se parchea en cada tecla, así que se calcula fuera
+                // del hilo de UI; si mientras tanto llegó un estado más nuevo, se descarta
+                // (StateFlow ya conflaciona los intermedios).
+                val progreso = withContext(Dispatchers.Default) { calcularProgreso(state) }
+                _ui.update { if (it.appState === state) it.copy(progresoPorSemana = progreso) else it }
             }
         }
+    }
+
+    private fun calcularProgreso(state: AppState): Map<Int, ProgresoSemana> {
+        val partida = state.partida ?: return emptyMap()
+        return Calculadora.calcProgresoTodas(partida, state.semanas, state.datosPorParcela)
     }
 
     /**
@@ -242,13 +261,6 @@ class SemanaViewModel @Inject constructor(
 
     private suspend fun recargar() {
         _ui.update { it.copy(appState = repo.cargarEstado()) }
-    }
-
-    fun getProgreso(semNum: Int): ProgresoSemana {
-        val st = _ui.value.appState
-        val partida = st.partida ?: return ProgresoSemana(semNum, 0, 0, 0, 0)
-        val semana  = st.getSemana(semNum)
-        return Calculadora.calcProgreso(semNum, partida, semana, st.datosPorParcela)
     }
 
     fun getProgresoGalera(galera: Galera, semNum: Int): ProgresoSemana {

@@ -192,7 +192,6 @@ fun SemanaScreen(
     val semanas    = st.semanas
     val semActual  = st.getSemana(semana)
     val semanaCerrada = semActual?.cerrada == true
-    val progActual = vm.getProgreso(semana)
     val isLastWeek = semanas.maxOfOrNull { it.numero } == semana && semanas.size > 1
 
     Scaffold(
@@ -291,7 +290,7 @@ fun SemanaScreen(
             WeekNavigationBar(
                 semanas = semanas,
                 currentSem = semana,
-                getProgreso = { sn -> vm.getProgreso(sn).pct },
+                getProgreso = { sn -> ui.progresoPorSemana[sn]?.pct ?: 0 },
                 onSelect = { vm.cargar(it) },   // cambio en caliente, sin navegar
                 onLongPress = { n ->
                     if (vm.semanaCerrada(n)) {

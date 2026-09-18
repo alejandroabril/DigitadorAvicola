@@ -353,6 +353,41 @@ object Calculadora {
         return ProgresoSemana(semNum, filled, total, mfilled, mtotal)
     }
 
+    /**
+     * Progreso de TODAS las semanas en un solo recorrido del lote.
+     *
+     * Equivale a llamar [calcProgreso] semana por semana, pero recorre el árbol
+     * galera→corral→jaula una sola vez en lugar de una vez por semana: la barra de
+     * navegación pinta un porcentaje por cada semana y antes eso costaba N recorridos
+     * completos en cada recomposición.
+     */
+    fun calcProgresoTodas(
+        partida: Partida,
+        semanas: List<Semana>,
+        datosPorParcela: Map<String, Map<Int, DatoParcela>>
+    ): Map<Int, ProgresoSemana> {
+        if (semanas.isEmpty()) return emptyMap()
+
+        // Por semana: [filled, total, mfilled, mtotal]
+        val acum = semanas.associate { it.numero to IntArray(4) }
+
+        for (g in partida.galeras) for (k in g.corrales) for (par in k.parcelas) {
+            if (par.inicio == 0) continue
+            val datos = datosPorParcela[par.id]
+            for (s in semanas) {
+                val a = acum[s.numero] ?: continue
+                val d = datos?.get(s.numero)
+                a[1] += 2
+                if (d?.peso != null) a[0]++
+                if (d != null && s.refsActivas.any { d.refs[it]?.ingreso != null }) a[0]++
+                a[3] += 7
+                a[2] += d?.mort?.count { it != null } ?: 0
+            }
+        }
+
+        return acum.mapValues { (num, a) -> ProgresoSemana(num, a[0], a[1], a[2], a[3]) }
+    }
+
     fun calcProgresoGalera(
         galera: Galera,
         semana: Semana?,

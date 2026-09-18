@@ -295,7 +295,7 @@ ninguna fórmula, y `app/src/test/` cubre el motor con tests de equivalencia con
 código anterior. En el mismo paso se arregló el build de *release*, que estaba roto.
 
 **Pendientes conocidos (menor riesgo):**
-- **Rendimiento:** `getProgreso` en `SemanaScreen`; el consumo acumulado sigue siendo O(semanas²). (`ResumenScreen` ya está resuelto: calcula una vez, en `ResumenViewModel` y fuera del hilo de UI.)
+- **Rendimiento:** el consumo acumulado sigue siendo O(semanas²) — cada semana se recalcula desde la 1. (`ResumenScreen` y `SemanaScreen` ya están resueltos: calculan una vez, en su ViewModel y fuera del hilo de UI.)
 - **Firma de release propia** (ver §12).
 - **Accesibilidad:** `contentDescription` en íconos accionables; tamaños táctiles <48 dp en algunos chips/celdas.
 - Limpiar preferencias huérfanas (`ultima_semana_*`, `refs_excluidas_*`) al purgar un lote.
