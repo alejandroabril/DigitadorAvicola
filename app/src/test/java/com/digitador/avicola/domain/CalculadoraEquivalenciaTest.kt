@@ -253,6 +253,56 @@ class CalculadoraEquivalenciaTest {
         assertEquals(0.0, kpi.fcrSem, tol)
     }
 
+    /**
+     * La serie incremental (una pasada para todas las semanas) tiene que dar
+     * exactamente lo mismo que pedir cada semana por separado. Es el contrato que
+     * permite que el Excel deje de ser O(semanas²).
+     */
+    @Test
+    fun `la serie por jaula coincide con pedir cada semana por separado`() {
+        var comparaciones = 0
+        for (semilla in 1..100) {
+            val rnd = Random(semilla)
+            val nSemanas = rnd.nextInt(1, 12)
+            val (corral, semanas, datos) = lote(rnd, nSemanas)
+            val excl = exclusiones(rnd, semanas)
+
+            for (par in corral.parcelas) {
+                val datosByPar = datos[par.id] ?: emptyMap()
+                val serie = Calculadora.computeSerieParcela(par, semanas, datosByPar, excl)
+
+                assertEquals("semilla=$semilla ${par.id}: faltan semanas", semanas.size, serie.size)
+                for (s in semanas) {
+                    val uno = Calculadora.computeMetricasParcela(par, s.numero, semanas, datosByPar, excl)
+                    assertEquals("semilla=$semilla ${par.id} sem=${s.numero}", uno, serie[s.numero])
+                    comparaciones++
+                }
+            }
+        }
+        assertTrue("el generador no produjo casos comparables", comparaciones > 2000)
+    }
+
+    /** Con semanas salteadas, la serie solo reporta las que existen —y con los mismos valores. */
+    @Test
+    fun `la serie respeta huecos en la numeracion de semanas`() {
+        val par = Parcela("P1", "K1", inicio = 40, pesoInicio = 1600.0)
+        val semanas = listOf(1, 2, 4).map { Semana(it, refsActivas = listOf("BR1")) }
+        val datos = (1..4).associateWith { sn ->
+            DatoParcela(sn, "P1", mort = List(7) { 1 }, peso = 300.0 * sn,
+                refs = mapOf("BR1" to RefAlimento("BR1", ingreso = 30.0, saldoFin = 5.0)))
+        }
+
+        val serie = Calculadora.computeSerieParcela(par, semanas, datos)
+        assertEquals(setOf(1, 2, 4), serie.keys)
+        for (s in semanas) {
+            assertEquals(
+                "sem=${s.numero}",
+                Calculadora.computeMetricasParcela(par, s.numero, semanas, datos),
+                serie[s.numero]
+            )
+        }
+    }
+
     /** Un ajuste manual de 0 kg significa "no consumió", no "calcúlalo por referencias". */
     @Test
     fun `ajuste de consumo en cero se respeta`() {

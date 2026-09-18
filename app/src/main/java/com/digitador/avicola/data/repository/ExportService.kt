@@ -551,6 +551,16 @@ class ExportService @Inject constructor(
             state.semanas.associate { it.numero to config.refsExcluidas(p.uid, it.numero) }
         } ?: emptyMap()
 
+        // Serie completa por jaula, calculada UNA vez (ver exportEstadistica).
+        val seriePorParcela = galera.corrales.flatMap { it.parcelas }.associate { par ->
+            par.id to Calculadora.computeSerieParcela(
+                parcela = par,
+                semanas = state.semanas,
+                datosByParcela = state.datosPorParcela[par.id] ?: emptyMap(),
+                refsExcluidasPorSemana = exclPorSem
+            )
+        }
+
         // Encabezado
         sheet.createRow(rowIdx++).also { r ->
             r.createCell(0).apply { setCellValue("Galera: ${galera.nombre}"); setCellStyle(styles["header"]) }
@@ -586,13 +596,14 @@ class ExportService @Inject constructor(
                     val dato = datosByPar[semNum] ?: DatoParcela(semNum, parcela.id)
 
                     // Único motor de cálculo: el mismo que alimenta la pantalla y el PDF.
-                    val m = Calculadora.computeMetricasParcela(
-                        parcela = parcela,
-                        semNum = semNum,
-                        todasSemanas = state.semanas,
-                        datosByParcela = datosByPar,
-                        refsExcluidasPorSemana = exclPorSem
-                    )
+                    val m = seriePorParcela[parcela.id]?.get(semNum)
+                        ?: Calculadora.computeMetricasParcela(
+                            parcela = parcela,
+                            semNum = semNum,
+                            todasSemanas = state.semanas,
+                            datosByParcela = datosByPar,
+                            refsExcluidasPorSemana = exclPorSem
+                        )
 
                     // La hoja deja la celda vacía cuando el indicador no aplica, y este
                     // escritor usa 0.0 como "vacío"; por eso se aplanan los null.
@@ -752,6 +763,20 @@ class ExportService @Inject constructor(
         // Referencias desechadas del cálculo, por semana (uid+sem).
         val exclPorSem = state.semanas.associate { it.numero to config.refsExcluidas(partida.uid, it.numero) }
 
+        // Serie completa por jaula, calculada UNA vez. La hoja escribe una fila por jaula
+        // y semana; pedir cada semana por separado rehacía el arrastre desde la semana 1
+        // (O(semanas²)). El orden de las filas no cambia: solo cambia de dónde salen.
+        val seriePorParcela = partida.galeras
+            .flatMap { it.corrales }.flatMap { it.parcelas }
+            .associate { par ->
+                par.id to Calculadora.computeSerieParcela(
+                    parcela = par,
+                    semanas = state.semanas,
+                    datosByParcela = state.datosPorParcela[par.id] ?: emptyMap(),
+                    refsExcluidasPorSemana = exclPorSem
+                )
+            }
+
         // Mapa para llevar el conteo de repeticiones por tratamiento
         // key: GaleraId-TratamientoLabel, value: counter
         val repeticiones = mutableMapOf<String, Int>()
@@ -774,13 +799,14 @@ class ExportService @Inject constructor(
                         val datosByPar = state.datosPorParcela[parcela.id] ?: emptyMap()
 
                         // Único motor de cálculo: el mismo que alimenta la pantalla y el PDF.
-                        val m = Calculadora.computeMetricasParcela(
-                            parcela = parcela,
-                            semNum = semNum,
-                            todasSemanas = state.semanas,
-                            datosByParcela = datosByPar,
-                            refsExcluidasPorSemana = exclPorSem
-                        )
+                        val m = seriePorParcela[parcela.id]?.get(semNum)
+                            ?: Calculadora.computeMetricasParcela(
+                                parcela = parcela,
+                                semNum = semNum,
+                                todasSemanas = state.semanas,
+                                datosByParcela = datosByPar,
+                                refsExcluidasPorSemana = exclPorSem
+                            )
 
                         // La tabla deja la celda vacía cuando el indicador no aplica, y
                         // este escritor usa 0.0 como "vacío"; por eso se aplanan los null.

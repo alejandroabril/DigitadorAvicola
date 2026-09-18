@@ -81,12 +81,88 @@ object Calculadora {
     }
 
     /**
-     * Métricas de UNA jaula en [semNum]. Recorre el lote una sola vez desde la semana 1
-     * para arrastrar saldo de aves, mortalidad acumulada y consumo acumulado.
+     * Arrastre de una jaula semana a semana: saldo de aves, mortalidad acumulada y
+     * consumo acumulado. Se avanza una semana por vez con [avanzar] y se fotografía
+     * el estado con [snapshot], de modo que calcular N semanas cuesta N pasos y no
+     * N recorridos desde la semana 1.
+     */
+    private class ArrastreParcela(private val parcela: Parcela) {
+        /** Saldo de aves en curso. Puede ser negativo si la mortalidad está mal digitada. */
+        private var saldoCorriente = parcela.inicio
+        private var mortAcum = 0
+        private var consAcumGave = 0.0
+
+        // Estado de la última semana procesada.
+        private var saldoAnterior = parcela.inicio
+        private var mortSem = 0
+        private var alimKgSem = 0.0
+        private var consGave = 0.0
+
+        fun avanzar(
+            sn: Int,
+            semana: Semana?,
+            datosByParcela: Map<Int, DatoParcela>,
+            refsExcluidas: Set<String>
+        ) {
+            val d = datosByParcela[sn]
+            val mort = d?.mort?.sumOf { it ?: 0 } ?: 0
+            mortAcum += mort
+            val saldoAlCerrar = saldoCorriente - mort
+
+            // Sin registro de la semana no se sabe qué alimentos estaban activos.
+            val alimKg = if (semana == null) 0.0
+                else alimentoKgSemana(sn, semana, datosByParcela, refsExcluidas)
+
+            if (saldoAlCerrar > 0 && alimKg > 0) {
+                consAcumGave += alimKg * GRAMOS_POR_KG / saldoAlCerrar
+            }
+
+            // El saldo REPORTADO nunca es negativo, aunque el arrastre interno sí
+            // pueda serlo con mortalidad mal digitada.
+            saldoAnterior = saldoCorriente.coerceAtLeast(0)
+            mortSem = mort
+            alimKgSem = alimKg
+            val saldoFin = saldoAnterior - mort
+            consGave = if (saldoFin > 0 && alimKg > 0) alimKg * GRAMOS_POR_KG / saldoFin else 0.0
+
+            saldoCorriente = saldoAlCerrar
+        }
+
+        fun snapshot(semNum: Int, datosByParcela: Map<Int, DatoParcela>): MetricasParcela {
+            val pesoGave = datosByParcela[semNum]?.peso ?: 0.0
+            val pesoRecepcion = if (parcela.inicio > 0) parcela.pesoInicio / parcela.inicio else 0.0
+            val pesoPrevio = if (semNum > 1) datosByParcela[semNum - 1]?.peso ?: 0.0 else pesoRecepcion
+
+            // Ganancia de peso: en la SEMANA 1 se toma todo el peso (según la planilla
+            // del ensayo); desde la 2 se resta el peso de la semana anterior.
+            val gain = if (semNum == 1) pesoGave
+                else if (pesoGave > 0 && pesoPrevio > 0) pesoGave - pesoPrevio
+                else 0.0
+
+            return MetricasParcela(
+                semNum = semNum,
+                inicioLote = parcela.inicio,
+                saldoAnterior = saldoAnterior,
+                mortSem = mortSem,
+                saldo = saldoAnterior - mortSem,
+                mortAcum = mortAcum,
+                pesoGave = pesoGave,
+                pesoPrevio = pesoPrevio,
+                pesoRecepcion = pesoRecepcion,
+                gain = gain,
+                alimKgSem = alimKgSem,
+                consGave = consGave,
+                consAcumGave = consAcumGave
+            )
+        }
+    }
+
+    /**
+     * Métricas de UNA jaula en [semNum]. Recorre el lote desde la semana 1 para
+     * arrastrar saldo de aves, mortalidad acumulada y consumo acumulado.
      *
-     * La mortalidad siempre se acumula (es un dato de la jaula); el consumo de una
-     * semana solo se calcula si esa semana existe en [todasSemanas], porque sin ella
-     * no se sabe qué alimentos estaban activos.
+     * Si necesitás varias semanas de la misma jaula, usá [computeSerieParcela]: repetir
+     * esta llamada por semana vuelve el cálculo cuadrático.
      */
     fun computeMetricasParcela(
         parcela: Parcela,
@@ -95,67 +171,42 @@ object Calculadora {
         datosByParcela: Map<Int, DatoParcela>,
         refsExcluidasPorSemana: Map<Int, Set<String>> = emptyMap()
     ): MetricasParcela {
-        var runningSaldo = parcela.inicio
-        var mortAcum = 0
-        var consAcumGave = 0.0
-
-        var saldoAnterior = parcela.inicio
-        var mortSem = 0
-        var alimKgSem = 0.0
-        var consGave = 0.0
-
+        val arrastre = ArrastreParcela(parcela)
         for (sn in 1..semNum) {
-            val d = datosByParcela[sn]
-            val mort = d?.mort?.sumOf { it ?: 0 } ?: 0
-            mortAcum += mort
-            val saldoAlCerrar = runningSaldo - mort
-
-            val semana = todasSemanas.find { it.numero == sn }
-            val alimKg = if (semana == null) 0.0
-                else alimentoKgSemana(sn, semana, datosByParcela, refsExcluidasPorSemana[sn] ?: emptySet())
-
-            if (saldoAlCerrar > 0 && alimKg > 0) {
-                consAcumGave += alimKg * GRAMOS_POR_KG / saldoAlCerrar
-            }
-
-            if (sn == semNum) {
-                // El saldo REPORTADO nunca es negativo, aunque el arrastre interno sí
-                // pueda serlo con mortalidad mal digitada.
-                saldoAnterior = runningSaldo.coerceAtLeast(0)
-                mortSem = mort
-                alimKgSem = alimKg
-                val saldoFin = saldoAnterior - mort
-                consGave = if (saldoFin > 0 && alimKg > 0) alimKg * GRAMOS_POR_KG / saldoFin else 0.0
-            }
-
-            runningSaldo = saldoAlCerrar
+            arrastre.avanzar(
+                sn,
+                todasSemanas.find { it.numero == sn },
+                datosByParcela,
+                refsExcluidasPorSemana[sn] ?: emptySet()
+            )
         }
+        return arrastre.snapshot(semNum, datosByParcela)
+    }
 
-        val pesoGave = datosByParcela[semNum]?.peso ?: 0.0
-        val pesoRecepcion = if (parcela.inicio > 0) parcela.pesoInicio / parcela.inicio else 0.0
-        val pesoPrevio = if (semNum > 1) datosByParcela[semNum - 1]?.peso ?: 0.0 else pesoRecepcion
+    /**
+     * Métricas de UNA jaula en TODAS las semanas, en un solo recorrido.
+     *
+     * Devuelve lo mismo que llamar [computeMetricasParcela] para cada semana, pero sin
+     * rehacer el arrastre desde la semana 1 en cada una: pasa de O(semanas²) a
+     * O(semanas). El Excel escribe una fila por jaula y semana, así que es ahí donde
+     * más pesa.
+     */
+    fun computeSerieParcela(
+        parcela: Parcela,
+        semanas: List<Semana>,
+        datosByParcela: Map<Int, DatoParcela>,
+        refsExcluidasPorSemana: Map<Int, Set<String>> = emptyMap()
+    ): Map<Int, MetricasParcela> {
+        val maxSem = semanas.maxOfOrNull { it.numero } ?: return emptyMap()
+        val porNumero = semanas.associateBy { it.numero }
 
-        // Ganancia de peso: en la SEMANA 1 se toma todo el peso (según la planilla del
-        // ensayo); desde la 2 se resta el peso de la semana anterior.
-        val gain = if (semNum == 1) pesoGave
-            else if (pesoGave > 0 && pesoPrevio > 0) pesoGave - pesoPrevio
-            else 0.0
-
-        return MetricasParcela(
-            semNum = semNum,
-            inicioLote = parcela.inicio,
-            saldoAnterior = saldoAnterior,
-            mortSem = mortSem,
-            saldo = saldoAnterior - mortSem,
-            mortAcum = mortAcum,
-            pesoGave = pesoGave,
-            pesoPrevio = pesoPrevio,
-            pesoRecepcion = pesoRecepcion,
-            gain = gain,
-            alimKgSem = alimKgSem,
-            consGave = consGave,
-            consAcumGave = consAcumGave
-        )
+        val arrastre = ArrastreParcela(parcela)
+        val salida = LinkedHashMap<Int, MetricasParcela>(semanas.size)
+        for (sn in 1..maxSem) {
+            arrastre.avanzar(sn, porNumero[sn], datosByParcela, refsExcluidasPorSemana[sn] ?: emptySet())
+            if (sn in porNumero) salida[sn] = arrastre.snapshot(sn, datosByParcela)
+        }
+        return salida
     }
 
     /**

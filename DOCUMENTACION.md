@@ -181,7 +181,10 @@ Toda la matemática está en [`domain/Calculadora.kt`](app/src/main/java/com/dig
 | **FCR ajustado** (sem ≥5, opcional) | `FCRacum + (2500 − pesoProm) / 3200`. |
 
 > ✅ **Un solo motor.** La unidad de cálculo es la jaula: `Calculadora.computeMetricasParcela`
-> devuelve un `MetricasParcela` con todos los indicadores. `computeMetricasCorral` no
+> devuelve un `MetricasParcela` con todos los indicadores. Si hacen falta varias semanas
+> de la misma jaula (el Excel escribe una fila por jaula y semana), se usa
+> `computeSerieParcela`, que las resuelve todas en un recorrido: repetir la llamada por
+> semana rehace el arrastre desde la semana 1 y vuelve el cálculo cuadrático. `computeMetricasCorral` no
 > recalcula nada, solo pondera esas métricas por saldo de aves, y el Excel escribe esas
 > mismas métricas fila a fila. Para cambiar una fórmula se toca **un solo sitio**.
 > `CalculadoraEquivalenciaTest` compara el motor contra una copia del código anterior
@@ -319,7 +322,7 @@ ninguna fórmula, y `app/src/test/` cubre el motor con tests de equivalencia con
 código anterior. En el mismo paso se arregló el build de *release*, que estaba roto.
 
 **Pendientes conocidos (menor riesgo):**
-- **Rendimiento:** el consumo acumulado sigue siendo O(semanas²) — cada semana se recalcula desde la 1. (`ResumenScreen` y `SemanaScreen` ya están resueltos: calculan una vez, en su ViewModel y fuera del hilo de UI.)
+- **Rendimiento:** resuelto en pantallas y export. Queda `exportResumen` (hoja deshabilitada), que sigue pidiendo el corral semana por semana; si se reactiva, necesita una serie por corral como la de `computeSerieParcela`.
 - **Generar la keystore propia** de release: el build ya la lee de `keystore.properties`, solo falta crear la clave (ver §12).
 - **Accesibilidad:** `contentDescription` en íconos accionables; tamaños táctiles <48 dp en algunos chips/celdas.
 - Limpiar preferencias huérfanas (`ultima_semana_*`, `refs_excluidas_*`) al purgar un lote.
