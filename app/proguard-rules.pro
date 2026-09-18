@@ -25,3 +25,11 @@
 -keep class * extends androidx.room.RoomDatabase
 -keep @androidx.room.Entity class *
 -keep @androidx.room.Dao interface *
+
+# Dependencias opcionales que POI/log4j referencian pero que no existen en Android.
+# Sin estas reglas R8 aborta el build de release (ver missing_rules.txt).
+-dontwarn aQute.bnd.annotation.spi.**
+-dontwarn org.osgi.framework.**
+-dontwarn org.apache.logging.log4j.**
+-dontwarn java.awt.**
+-dontwarn com.graphbuilder.**
