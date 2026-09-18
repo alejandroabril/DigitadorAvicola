@@ -329,7 +329,10 @@ código anterior. En el mismo paso se arregló el build de *release*, que estaba
   `Modifier.minimumInteractiveComponentSize()`, que agranda el área táctil sin mover el
   diseño. Los `contentDescription` de íconos accionables ya están puestos; los íconos
   decorativos siguen (correctamente) en `null`, para que el lector no los repita.
-- Limpiar preferencias huérfanas (`ultima_semana_*`, `refs_excluidas_*`) al purgar un lote.
+- Las preferencias de lotes purgados **antes** de este cambio siguen en el archivo:
+  se limpian al purgar de ahora en adelante, pero las ya huérfanas no se barren. Si
+  molestan, haría falta un barrido contra los uid vivos — con cuidado, porque borrar de
+  más quita las referencias excluidas y eso **cambia los indicadores** de un lote.
 - Ampliar los tests más allá del motor de cálculo (repositorios, importación `.davi`).
 - En la hoja por galera, la columna **"Consumo(g)"** trae kilogramos, no gramos: el
   encabezado miente. Esa hoja está deshabilitada hoy, pero hay que corregirlo antes de

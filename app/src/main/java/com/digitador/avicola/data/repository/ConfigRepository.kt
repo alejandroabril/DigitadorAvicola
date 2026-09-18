@@ -56,6 +56,19 @@ class ConfigRepository @Inject constructor(
     }
 
     /**
+     * Borra las preferencias que quedarían colgando de un lote purgado: la última
+     * semana vista y las referencias excluidas de cada semana. Cuántas semanas tuvo el
+     * lote no se sabe aquí, así que esas se barren por prefijo.
+     */
+    fun limpiarPreferenciasDeLote(uid: String) {
+        val claves = clavesDeLote(uid, prefs.all.keys)
+        if (claves.isEmpty()) return
+        val editor = prefs.edit()
+        claves.forEach { editor.remove(it) }
+        editor.apply()
+    }
+
+    /**
      * Verifica el PIN contra el hash salado almacenado. Compatibilidad: si todavía hay
      * un PIN en texto plano (o el default "0000"), lo acepta UNA vez y lo migra a hash.
      */
@@ -110,5 +123,21 @@ class ConfigRepository @Inject constructor(
         private const val KEY_ULT_SEM = "ultima_semana_"
         private const val KEY_REF_EXCL = "refs_excluidas_"
         const val DEFAULT_PIN = "0000"
+
+        /**
+         * Claves de preferencias que pertenecen al lote [uid] y a nadie más.
+         *
+         * Pura y sin Android a propósito, para poder probarla: estas claves conviven con
+         * el PIN y los ajustes globales en el mismo archivo, y una coincidencia de más al
+         * purgar un lote se llevaría por delante el PIN de la app.
+         */
+        fun clavesDeLote(uid: String, todas: Set<String>): Set<String> {
+            if (uid.isBlank()) return emptySet()
+            val ultimaSemana = KEY_ULT_SEM + uid
+            // El "_" final evita que el uid de un lote alcance al de otro que lo tenga
+            // como prefijo.
+            val prefijoRefs = KEY_REF_EXCL + uid + "_"
+            return todas.filterTo(mutableSetOf()) { it == ultimaSemana || it.startsWith(prefijoRefs) }
+        }
     }
 }

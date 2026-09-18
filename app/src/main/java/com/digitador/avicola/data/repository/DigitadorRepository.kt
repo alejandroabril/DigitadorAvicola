@@ -21,7 +21,8 @@ import javax.inject.Singleton
 class DigitadorRepository @Inject constructor(
     private val db: DigitadorDatabase,
     private val partidaDao: PartidaDao,
-    private val semanaDao: SemanaDao
+    private val semanaDao: SemanaDao,
+    private val config: ConfigRepository
 ) {
     @Volatile private var currentPartidaId: Long? = null
     private val _appState = MutableStateFlow(AppState())
@@ -320,14 +321,22 @@ class DigitadorRepository @Inject constructor(
         partidaDao.restore(id)
     }
 
-    /** Borra DEFINITIVAMENTE un lote (estructura + semanas + datos + refs). */
+    /**
+     * Borra DEFINITIVAMENTE un lote (estructura + semanas + datos + refs) y las
+     * preferencias asociadas a su uid, que si no quedarían para siempre en el archivo
+     * de preferencias. El uid se lee ANTES de borrar la fila: después ya no existe.
+     */
     suspend fun borrarFisicamente(id: Long) = withContext(Dispatchers.IO) {
+        val uid = partidaDao.getPartidaById(id)?.uid
         db.withTransaction {
             semanaDao.deleteAllRefsByPartida(id)
             semanaDao.deleteAllDatosByPartida(id)
             semanaDao.deleteSemanasByPartida(id)
             partidaDao.deletePartidaById(id)
         }
+        // Fuera de la transacción: las preferencias no son parte de la BD y no habría
+        // forma de revertirlas si la transacción fallara.
+        if (!uid.isNullOrBlank()) config.limpiarPreferenciasDeLote(uid)
         if (currentPartidaId == id) currentPartidaId = null
     }
 
