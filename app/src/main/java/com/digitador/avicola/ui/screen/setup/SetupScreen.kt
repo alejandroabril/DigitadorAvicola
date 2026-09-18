@@ -117,7 +117,7 @@ fun SetupScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = { if (currentStep > 1) currentStep-- else onBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atrás", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = AvicolaPrimary)

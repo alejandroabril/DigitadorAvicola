@@ -60,7 +60,7 @@ fun ResumenScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver", tint = Color.White)
                     }
                 },
                 actions = {
@@ -69,10 +69,10 @@ fun ResumenScreen(
                     val maxSem = st.semanas.maxOfOrNull { it.numero } ?: 1
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { if (prev >= 1) onNavSemana(prev) }, enabled = prev >= 1) {
-                            Icon(Icons.Default.ChevronLeft, null, tint = Color.White)
+                            Icon(Icons.Default.ChevronLeft, "Semana anterior", tint = Color.White)
                         }
                         IconButton(onClick = { if (next <= maxSem) onNavSemana(next) }, enabled = next <= maxSem) {
-                            Icon(Icons.Default.ChevronRight, null, tint = Color.White)
+                            Icon(Icons.Default.ChevronRight, "Semana siguiente", tint = Color.White)
                         }
                     }
                 },

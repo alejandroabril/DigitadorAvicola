@@ -185,7 +185,7 @@ fun DigitacionHeader(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver", tint = Color.White)
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(

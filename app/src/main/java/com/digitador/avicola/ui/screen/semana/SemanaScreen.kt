@@ -209,7 +209,7 @@ fun SemanaScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = { vm.showResetDialog(true) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver al historial", tint = Color.White)
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -227,11 +227,11 @@ fun SemanaScreen(
                     }
                     if (isLastWeek) {
                         IconButton(onClick = { vm.showDeleteConfirm(true) }) {
-                            Icon(Icons.Default.DeleteSweep, null, tint = Color.White)
+                            Icon(Icons.Default.DeleteSweep, "Eliminar esta semana", tint = Color.White)
                         }
                     }
                     IconButton(onClick = onAjustes) {
-                        Icon(Icons.Default.Settings, null, tint = Color.White)
+                        Icon(Icons.Default.Settings, "Ajustes", tint = Color.White)
                     }
                 }
             }
