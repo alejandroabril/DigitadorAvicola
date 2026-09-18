@@ -38,3 +38,7 @@ local.properties
 /gen_davi.py
 /imagen inicio.png
 /Experimental/
+
+# Toolchain del daemon que genera Android Studio: clava el JDK del equipo
+# local (hoy 25) y no debe imponerse a quien clone el repo.
+/gradle/gradle-daemon-jvm.properties
