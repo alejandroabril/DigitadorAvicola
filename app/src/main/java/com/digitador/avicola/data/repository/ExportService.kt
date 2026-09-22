@@ -237,6 +237,83 @@ class ExportService @Inject constructor(
             y += 16f
         }
 
+        // ── Tabla consolidada: todas las galeras juntas ─────────────────────
+        // La galera es el BLOQUE del ensayo: el K1 de G1 y el K1 de G2 son el mismo
+        // tratamiento. Esta tabla agrupa por label de tratamiento sumando las jaulas de
+        // todas las galeras, y cierra con una columna del lote entero. Con una sola
+        // galera no aporta nada sobre su propia tabla, así que se omite.
+        if (partida.galeras.size > 1 && semana != null) {
+            val corralesTodos = partida.galeras.flatMap { it.corrales }.filter { it.parcelas.isNotEmpty() }
+            val labelsCons = corralesTodos
+                .map { it.id.substringAfterLast("-") }
+                .distinct()
+                .sortedBy { lbl -> lbl.filter { it.isDigit() }.toIntOrNull() ?: 0 }
+
+            if (labelsCons.isNotEmpty()) {
+                val exclCons = (1..semNum).associateWith { config.refsExcluidas(partida.uid, it) }
+                fun metricasDe(parcelas: List<Parcela>) = Calculadora.computeMetricasDeParcelas(
+                    parcelas, semNum, semana, state.semanas, state.datosPorParcela, exclCons
+                )
+
+                val metricasCons = labelsCons.associateWith { lbl ->
+                    metricasDe(corralesTodos.filter { it.id.substringAfterLast("-") == lbl }.flatMap { it.parcelas })
+                }
+                val metricasLote = metricasDe(corralesTodos.flatMap { it.parcelas })
+
+                val COL_LOTE = "LOTE"
+                val colsCons = labelsCons + COL_LOTE
+                val colWC = (tableW - labelW) / colsCons.size
+                fun colCenterC(i: Int) = margin + labelW + colWC * i + colWC / 2f
+
+                fun drawHeaderCons() {
+                    pFill.color = green
+                    canvas.drawRect(margin, y, margin + tableW, y + headH, pFill)
+                    pHead.textAlign = Paint.Align.LEFT
+                    canvas.drawText("INDICADOR", margin + 6f, y + 13f, pHead)
+                    pHead.textAlign = Paint.Align.CENTER
+                    colsCons.forEachIndexed { i, lbl -> canvas.drawText(lbl, colCenterC(i), y + 13f, pHead) }
+                    pHead.textAlign = Paint.Align.LEFT
+                    y += headH
+                }
+
+                asegurar(18f + headH + rowH)
+                canvas.drawText("Consolidado · todas las galeras", margin, y + 10f, pGalera)
+                y += 16f
+                drawHeaderCons()
+
+                kpis.forEachIndexed { idx, kpi ->
+                    if (asegurar(rowH)) drawHeaderCons()
+                    if (idx % 2 == 1) {
+                        pFill.color = rowAlt
+                        canvas.drawRect(margin, y, margin + tableW, y + rowH, pFill)
+                    }
+                    pCellB.textAlign = Paint.Align.LEFT
+                    canvas.drawText(kpi.label, margin + 6f, y + 12f, pCellB)
+                    pCell.textAlign = Paint.Align.CENTER
+                    pCellB.textAlign = Paint.Align.CENTER
+                    colsCons.forEachIndexed { i, lbl ->
+                        val m = if (lbl == COL_LOTE) metricasLote else metricasCons[lbl]
+                        // La columna del lote en negrita: es la que se lee primero.
+                        canvas.drawText(kpi.get(m), colCenterC(i), y + 12f, if (lbl == COL_LOTE) pCellB else pCell)
+                    }
+                    pCell.textAlign = Paint.Align.LEFT
+                    pCellB.textAlign = Paint.Align.LEFT
+                    canvas.drawLine(margin, y + rowH, margin + tableW, y + rowH, pLine)
+                    canvas.drawLine(margin + labelW, y, margin + labelW, y + rowH, pLine)
+                    for (i in 1 until colsCons.size) {
+                        val x = margin + labelW + colWC * i
+                        canvas.drawLine(x, y, x, y + rowH, pLine)
+                    }
+                    y += rowH
+                }
+                canvas.drawText(
+                    "Cada tratamiento junta sus jaulas de todas las galeras; los promedios se ponderan por saldo de aves.",
+                    margin, y + 10f, pSub
+                )
+                y += 22f
+            }
+        }
+
         // ── Sección: Coeficiente de variación del peso (HOJA APARTE) ────────
         // Mismo cálculo que la planilla (DesvEst muestral / promedio de los pesos
         // promedio de las jaulas) en tres niveles: tratamiento, galera y global.

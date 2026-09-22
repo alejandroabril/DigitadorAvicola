@@ -221,13 +221,31 @@ object Calculadora {
         todasSemanas: List<Semana>,
         datosPorParcela: Map<String, Map<Int, DatoParcela>>,
         refsExcluidasPorSemana: Map<Int, Set<String>> = emptyMap()
+    ): MetricasCorral? = computeMetricasDeParcelas(
+        corral.parcelas, semNum, semana, todasSemanas, datosPorParcela, refsExcluidasPorSemana
+    )
+
+    /**
+     * Lo mismo que [computeMetricasCorral] para un grupo CUALQUIERA de jaulas: las de un
+     * tratamiento, las del mismo tratamiento en varias galeras (la galera es el bloque
+     * del ensayo, así que el K1 de cada una es el mismo tratamiento) o las del lote
+     * entero. El promedio siempre se pondera por saldo de aves, así que juntar jaulas de
+     * distintas galeras da la media del conjunto, no la media de las medias.
+     */
+    fun computeMetricasDeParcelas(
+        parcelas: List<Parcela>,
+        semNum: Int,
+        semana: Semana,
+        todasSemanas: List<Semana>,
+        datosPorParcela: Map<String, Map<Int, DatoParcela>>,
+        refsExcluidasPorSemana: Map<Int, Set<String>> = emptyMap()
     ): MetricasCorral? {
-        if (corral.parcelas.isEmpty()) return null
+        if (parcelas.isEmpty()) return null
 
         // La semana que se está viendo manda, aunque no esté en la lista recibida.
         val semanas = if (todasSemanas.any { it.numero == semNum }) todasSemanas else todasSemanas + semana
 
-        val metricas = corral.parcelas.map { par ->
+        val metricas = parcelas.map { par ->
             computeMetricasParcela(par, semNum, semanas, datosPorParcela[par.id] ?: emptyMap(), refsExcluidasPorSemana)
         }
 

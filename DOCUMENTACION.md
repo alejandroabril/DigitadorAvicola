@@ -235,7 +235,7 @@ Notas:
 
 En [`ExportService.kt`](app/src/main/java/com/digitador/avicola/data/repository/ExportService.kt):
 - **Excel (.xlsx, Apache POI):** hoja "Estadística" (una fila por parcela/semana, formateada como tabla). ⚠️ `autoSizeColumn` **NO funciona en Android** (requiere AWT) → anchos fijos.
-- **PDF (`android.graphics.pdf.PdfDocument`):** "Análisis de la semana" transpuesto (KPIs en filas, tratamientos en columnas) + **hoja aparte con el Coeficiente de Variación del peso** (por tratamiento, por galera y global). Lleva el **logo Cargill** (recurso `R.drawable.cargill_logo`) arriba a la derecha de cada página.
+- **PDF (`android.graphics.pdf.PdfDocument`):** "Análisis de la semana" transpuesto (KPIs en filas, tratamientos en columnas), una tabla por galera y, con más de una galera, una **tabla consolidada** que junta cada tratamiento en todas las galeras y cierra con una columna del lote entero + **hoja aparte con el Coeficiente de Variación del peso** (por tratamiento, por galera y global). Lleva el **logo Cargill** (recurso `R.drawable.cargill_logo`) arriba a la derecha de cada página.
 - Los archivos se generan en `cacheDir/exports` (se autolimpia >24 h) y se comparten con `FileProvider` + `shareFile`.
 
 > Si se quita el recurso `cargill_logo.png`, el PDF **no compila** (referencia `R.drawable.cargill_logo`). Mantenerlo en `app/src/main/res/drawable/`.
@@ -296,7 +296,7 @@ Distribución actual: se comparte el **APK** directamente (Ajustes → compartir
 4. Rebuild → verificar el nuevo `schemas/<version>.json`.
 5. **Nunca** volver a `fallbackToDestructiveMigration()` sin `From(...)`.
 
-**Agregar/cambiar un indicador:** editar `Calculadora.computeMetricasCorral` **y** replicar en `ExportService` (Excel/PDF) **y** mostrarlo en `ResumenScreen`.
+**Agregar/cambiar un indicador:** se edita **solo** en `Calculadora`; el Excel y el PDF consumen ese mismo motor (ver §7).
 
 **Agregar una pantalla:** nueva entrada en `sealed interface Screen` + `composable<...>` en `NavGraph` + `XxxScreen.kt` + `XxxViewModel.kt` (`@HiltViewModel`).
 

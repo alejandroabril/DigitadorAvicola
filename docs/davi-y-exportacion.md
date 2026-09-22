@@ -315,6 +315,16 @@ Por **cada galera**, una tabla con:
 - Cada celda usa el mismo cálculo que la pantalla: `Calculadora.computeMetricasCorral` con el mapa de referencias excluidas por semana.
 - Paginación automática (`asegurar`/`nuevaPagina`): si una tabla no entra, salta de página y redibuja el encabezado.
 
+**Tabla consolidada** (al final de la hoja, solo si el lote tiene **más de una galera**):
+`Consolidado · todas las galeras`, con los mismos KPIs en filas. Las columnas son los
+**labels de tratamiento del lote entero**: la galera es el bloque del ensayo, así que el
+K1 de G1 y el K1 de G2 son el mismo tratamiento y sus jaulas se juntan en una columna.
+Cierra con una columna **`LOTE`** (en negrita) que agrupa todas las jaulas.
+Usa `Calculadora.computeMetricasDeParcelas`, la versión de `computeMetricasCorral` que
+acepta cualquier grupo de jaulas; los promedios siguen ponderados por saldo de aves, de
+modo que el consolidado es la media del conjunto y **no** la media de las medias por
+galera.
+
 ### Hoja 2 — Coeficiente de variación del peso
 
 **Siempre arranca en hoja propia** (`nuevaPagina()` antes de empezar). Columnas: `n jaulas`, `Peso prom (g)`, `Desv. est (g)`, `2σ (g)`, `CV % peso`. Tres niveles (`Calculadora.cvPesoDeParcelas`):

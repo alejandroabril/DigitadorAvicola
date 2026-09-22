@@ -1,3 +1,6 @@
+# Basura del Finder de macOS
+.DS_Store
+
 # Volcados de memoria (heap dumps) de crashes OOM
 *.hprof
 
