@@ -144,7 +144,10 @@ class ExportService @Inject constructor(
         var pageNo = 1
         var page = pdf.startPage(PdfDocument.PageInfo.Builder(pageW, pageH, pageNo).create())
         var canvas = page.canvas
-        var y = contentTop
+        // La primera página arranca en el margen: su título y subtítulo van pegados a la
+        // izquierda y no llegan al logo. Las páginas SIGUIENTES sí empiezan bajo él
+        // (ver nuevaPagina), porque ahí lo primero que se dibuja es una tabla a todo ancho.
+        var y = margin
 
         fun drawLogo() {
             val bmp = logo ?: return
@@ -210,7 +213,9 @@ class ExportService @Inject constructor(
                 y += headH
             }
 
-            asegurar(18f + headH + rowH)
+            // Tabla completa o página nueva: partir una tabla de galera en dos hojas
+            // obliga a leer los indicadores de un tratamiento a caballo entre páginas.
+            asegurar(16f + headH + kpis.size * rowH)
             canvas.drawText(galera.nombre, margin, y + 10f, pGalera)
             y += 16f
             drawHeaderTrat()
@@ -280,7 +285,7 @@ class ExportService @Inject constructor(
                     y += headH
                 }
 
-                asegurar(18f + headH + rowH)
+                asegurar(16f + headH + kpis.size * rowH + 22f)
                 canvas.drawText("Consolidado · todas las galeras", margin, y + 10f, pGalera)
                 y += 16f
                 drawHeaderCons()
