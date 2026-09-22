@@ -134,18 +134,22 @@ class ExportService @Inject constructor(
             BitmapFactory.decodeResource(context.resources, R.drawable.cargill_logo)
         } catch (e: Exception) { null }
         val logoSize = 78f
+        val logoTop = 8f
+        // El logo NO reserva espacio por sí mismo: si el contenido arrancara en `margin`,
+        // las bandas y filas de tabla —que ocupan todo el ancho— se pintarían encima de él.
+        // Todas las páginas empiezan por debajo del logo. Sin logo, margen normal.
+        val contentTop = if (logo != null) logoTop + logoSize + 6f else margin
 
         val pdf = PdfDocument()
         var pageNo = 1
         var page = pdf.startPage(PdfDocument.PageInfo.Builder(pageW, pageH, pageNo).create())
         var canvas = page.canvas
-        var y = margin
+        var y = contentTop
 
         fun drawLogo() {
             val bmp = logo ?: return
             val left = pageW - margin - logoSize
-            val top = 8f
-            canvas.drawBitmap(bmp, null, RectF(left, top, left + logoSize, top + logoSize), null)
+            canvas.drawBitmap(bmp, null, RectF(left, logoTop, left + logoSize, logoTop + logoSize), null)
         }
 
         fun nuevaPagina() {
@@ -154,7 +158,7 @@ class ExportService @Inject constructor(
             pageNo += 1
             page = pdf.startPage(PdfDocument.PageInfo.Builder(pageW, pageH, pageNo).create())
             canvas = page.canvas
-            y = margin
+            y = contentTop
             drawLogo()
         }
         fun asegurar(alto: Float): Boolean {
