@@ -132,7 +132,15 @@ class DigitadorRepository @Inject constructor(
                             id = k.id,
                             galeraId = k.galeraId,
                             parcelas = (parcelasByCorral[k.id] ?: emptyList()).map { p ->
-                                Parcela(p.id, p.corralId, p.inicio, p.pesoInicio)
+                                Parcela(
+                                    id = p.id,
+                                    corralId = p.corralId,
+                                    inicio = p.inicio,
+                                    pesoInicio = p.pesoInicio,
+                                    suspendida = p.suspendida,
+                                    suspendidaEn = p.suspendidaEn,
+                                    suspendidaMotivo = p.suspendidaMotivo
+                                )
                             }.sortedBy { it.id }
                         )
                     }.sortedBy { it.id }
@@ -168,7 +176,15 @@ class DigitadorRepository @Inject constructor(
                 g.corrales.forEachIndexed { ki, k ->
                     partidaDao.upsertCorral(CorralEntity(k.id, pid, g.id, ki))
                     k.parcelas.forEachIndexed { pi, p ->
-                        partidaDao.upsertParcela(ParcelaEntity(p.id, pid, k.id, p.inicio, p.pesoInicio, pi))
+                        partidaDao.upsertParcela(
+                            ParcelaEntity(
+                                id = p.id, partidaId = pid, corralId = k.id,
+                                inicio = p.inicio, pesoInicio = p.pesoInicio, orden = pi,
+                                suspendida = p.suspendida,
+                                suspendidaEn = p.suspendidaEn,
+                                suspendidaMotivo = p.suspendidaMotivo
+                            )
+                        )
                     }
                 }
             }
@@ -314,6 +330,30 @@ class DigitadorRepository @Inject constructor(
     suspend fun moverAPapelera(id: Long) = withContext(Dispatchers.IO) {
         partidaDao.softDelete(id, System.currentTimeMillis())
         if (currentPartidaId == id) currentPartidaId = null
+    }
+
+    /**
+     * Suspende o reactiva una jaula en el análisis. Solo toca esa fila y recarga el
+     * estado para que pantallas y reportes dejen de contarla al instante.
+     *
+     * Al suspender se guarda el momento y el motivo; al reactivar se limpian, porque una
+     * jaula activa con motivo de suspensión guardado se lee como si siguiera fuera.
+     */
+    suspend fun setParcelaSuspendida(
+        parcelaId: String,
+        suspendida: Boolean,
+        motivo: String = ""
+    ) = withContext(Dispatchers.IO) {
+        val pid = currentPartidaId ?: return@withContext
+        val actual = partidaDao.getParcela(parcelaId, pid) ?: return@withContext
+        partidaDao.upsertParcela(
+            actual.copy(
+                suspendida = suspendida,
+                suspendidaEn = if (suspendida) System.currentTimeMillis() else 0L,
+                suspendidaMotivo = if (suspendida) motivo.trim() else ""
+            )
+        )
+        cargarEstado(pid)
     }
 
     /** Restaura un lote de la papelera. */

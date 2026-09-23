@@ -17,6 +17,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -36,11 +40,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.digitador.avicola.ui.components.PinDialog
+import kotlinx.coroutines.launch
 import com.digitador.avicola.domain.Calculadora
 import com.digitador.avicola.domain.DatoParcela
 import com.digitador.avicola.domain.Parcela
@@ -69,6 +77,50 @@ fun DigitacionScreen(
     val ui by vm.ui.collectAsState()
     val scope = rememberCoroutineScope()
     var isSaving by remember { mutableStateOf(false) }
+
+    // Suspensión de jaulas: aviso al tocar una suspendida, diálogo al mantener pulsado
+    // su distintivo, y PIN antes de aplicar el cambio en cualquiera de los dos sentidos.
+    val snackbarHostState = remember { SnackbarHostState() }
+    var parcelaAGestionar by remember { mutableStateOf<Parcela?>(null) }
+    var accionPendientePin by remember { mutableStateOf<AccionSuspension?>(null) }
+
+    val avisarSuspendida: () -> Unit = {
+        scope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(
+                "Jaula suspendida: se registra, pero no entra en el análisis",
+                duration = SnackbarDuration.Short
+            )
+        }
+    }
+
+    val aplicar: (AccionSuspension) -> Unit = { a ->
+        if (vm.pinHabilitado()) accionPendientePin = a
+        else vm.setParcelaSuspendida(a.parcela.id, a.suspender, a.motivo)
+    }
+
+    parcelaAGestionar?.let { p ->
+        DialogoSuspension(
+            parcela = p,
+            onDismiss = { parcelaAGestionar = null },
+            onConfirmar = { suspender, motivo ->
+                parcelaAGestionar = null
+                aplicar(AccionSuspension(p, suspender, motivo))
+            }
+        )
+    }
+
+    accionPendientePin?.let { a ->
+        PinDialog(
+            onVerify = { vm.verificarPin(it) },
+            titulo = if (a.suspender) "Suspender ${a.parcela.id}" else "Reactivar ${a.parcela.id}",
+            onDismiss = { accionPendientePin = null },
+            onSuccess = {
+                vm.setParcelaSuspendida(a.parcela.id, a.suspender, a.motivo)
+                accionPendientePin = null
+            }
+        )
+    }
     
     // Manejar el botón de atrás del sistema
     BackHandler(enabled = !isSaving) {
@@ -86,6 +138,7 @@ fun DigitacionScreen(
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
             Scaffold(
+                snackbarHost = { SnackbarHost(snackbarHostState) },
                 topBar = {
                     DigitacionHeader(
                         ui = ui,
@@ -131,9 +184,12 @@ fun DigitacionScreen(
                     }
                     Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                         when (ui.activeCategory) {
-                            DigitacionCategory.MORTALIDAD -> MortalidadMatrix(ui.parcels, semanaNumero, ui, vm)
-                            DigitacionCategory.PESO -> PesoMatrix(ui.parcels, semanaNumero, ui, vm)
-                            DigitacionCategory.ALIMENTO -> AlimentoMatrix(ui.parcels, semanaNumero, ui, vm)
+                            DigitacionCategory.MORTALIDAD ->
+                                MortalidadMatrix(ui.parcels, semanaNumero, ui, vm, avisarSuspendida) { parcelaAGestionar = it }
+                            DigitacionCategory.PESO ->
+                                PesoMatrix(ui.parcels, semanaNumero, ui, vm, avisarSuspendida) { parcelaAGestionar = it }
+                            DigitacionCategory.ALIMENTO ->
+                                AlimentoMatrix(ui.parcels, semanaNumero, ui, vm, avisarSuspendida) { parcelaAGestionar = it }
                         }
                     }
                 }
@@ -326,7 +382,8 @@ fun KpiCard(label: String, value: String, icon: androidx.compose.ui.graphics.vec
 }
 
 @Composable
-fun MortalidadMatrix(parcels: List<Parcela>, semNum: Int, ui: DigitacionUiState, vm: DigitacionViewModel) {
+fun MortalidadMatrix(parcels: List<Parcela>, semNum: Int, ui: DigitacionUiState, vm: DigitacionViewModel,
+                     onAviso: () -> Unit = {}, onGestionar: (Parcela) -> Unit = {}) {
     val daysData = remember(ui.semana?.fechaInicio) {
         val baseDate = try { LocalDate.parse(ui.semana?.fechaInicio) } catch (_: Exception) { null }
         val meses = listOf("ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC")
@@ -378,27 +435,87 @@ fun MortalidadMatrix(parcels: List<Parcela>, semNum: Int, ui: DigitacionUiState,
         ) {
             items(parcels, key = { it.id }) { p ->
                 val dato = ui.datos[p.id]?.get(semNum) ?: DatoParcela(semNum, p.id)
-                MortalidadRow(p.id, dato, semNum, vm, ui.finalizada)
+                MortalidadRow(p.id, dato, semNum, vm, ui.finalizada, p.suspendida, onAviso) { onGestionar(p) }
             }
         }
     }
 }
 
+// ── Jaulas suspendidas del análisis ───────────────────────────────────────────
+// Se siguen digitando (el dato de campo se conserva), pero no cuentan en ningún
+// indicador. La fila va en rojo y avisa al tocarla.
+
+/** Colores de la fila y del distintivo según esté suspendida o no. */
+private data class EstiloFila(val fondo: Color, val borde: Color, val chip: Color, val texto: Color)
+
 @Composable
-fun MortalidadRow(pId: String, dato: DatoParcela, semNum: Int, vm: DigitacionViewModel, bloqueada: Boolean) {
+private fun estiloFila(suspendida: Boolean, fondoNormal: Color, bordeNormal: Color, chipNormal: Color, textoNormal: Color) =
+    if (suspendida) EstiloFila(DangerSurface, Danger, Danger, Color.White)
+    else EstiloFila(fondoNormal, bordeNormal, chipNormal, textoNormal)
+
+/**
+ * Observa el toque SIN consumirlo: muestra el aviso y deja que el campo reciba el foco,
+ * porque a una jaula suspendida se le sigue digitando.
+ */
+private fun Modifier.avisoSiSuspendida(suspendida: Boolean, onAviso: () -> Unit): Modifier =
+    if (!suspendida) this else this.pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            onAviso()
+        }
+    }
+
+/** Distintivo de la jaula. Mantener pulsado abre el diálogo de suspender/reactivar. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ChipParcela(
+    texto: String,
+    suspendida: Boolean,
+    ancho: Dp,
+    fondo: Color,
+    color: Color,
+    forma: RoundedCornerShape,
+    peso: FontWeight,
+    tamano: androidx.compose.ui.unit.TextUnit,
+    onMantenerPulsado: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.width(ancho).combinedClickable(
+            onClick = onMantenerPulsado,
+            onLongClick = onMantenerPulsado
+        ),
+        color = fondo,
+        shape = forma
+    ) {
+        Text(
+            texto,
+            Modifier.padding(vertical = 4.dp),
+            textAlign = TextAlign.Center,
+            fontWeight = peso,
+            fontSize = tamano,
+            color = color,
+            textDecoration = if (suspendida) TextDecoration.LineThrough else null
+        )
+    }
+}
+
+@Composable
+fun MortalidadRow(
+    pId: String, dato: DatoParcela, semNum: Int, vm: DigitacionViewModel, bloqueada: Boolean,
+    suspendida: Boolean = false, onAviso: () -> Unit = {}, onGestionar: () -> Unit = {}
+) {
     val displayId = remember(pId) { 
         if (pId.startsWith("G", ignoreCase = true) && pId.getOrNull(1)?.isDigit() == true) pId.substring(2) else pId 
     }
+    val est = estiloFila(suspendida, Color.White, SurfaceMuted, StateSuccessSurface, GreenSuccessText)
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().avisoSiSuspendida(suspendida, onAviso),
         shape = RoundedCornerShape(8.dp),
-        color = Color.White,
-        border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceMuted)
+        color = est.fondo,
+        border = androidx.compose.foundation.BorderStroke(1.dp, est.borde)
     ) {
         Row(modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(modifier = Modifier.width(50.dp), color = StateSuccessSurface, shape = RoundedCornerShape(6.dp)) {
-                Text(displayId, Modifier.padding(vertical = 4.dp), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = GreenSuccessText)
-            }
+            ChipParcela(displayId, suspendida, 50.dp, est.chip, est.texto, RoundedCornerShape(6.dp), FontWeight.Bold, 11.sp, onGestionar)
             
             dato.mort.forEachIndexed { idx, value ->
                 var local by remember(value) { mutableStateOf(if (value == 0 || value == null) "" else value.toString()) }
@@ -432,7 +549,8 @@ fun MortalidadRow(pId: String, dato: DatoParcela, semNum: Int, vm: DigitacionVie
 }
 
 @Composable
-fun PesoMatrix(parcels: List<Parcela>, semNum: Int, ui: DigitacionUiState, vm: DigitacionViewModel) {
+fun PesoMatrix(parcels: List<Parcela>, semNum: Int, ui: DigitacionUiState, vm: DigitacionViewModel,
+               onAviso: () -> Unit = {}, onGestionar: (Parcela) -> Unit = {}) {
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(modifier = Modifier.fillMaxWidth(), color = Color.White) {
             Row(modifier = Modifier.padding(vertical = 10.dp, horizontal = 16.dp)) {
@@ -456,29 +574,32 @@ fun PesoMatrix(parcels: List<Parcela>, semNum: Int, ui: DigitacionUiState, vm: D
                     Calculadora.getSaldoAnterior(semNum, p.id, p, datosByPar) -
                         (datosByPar[semNum]?.mort?.sumOf { it ?: 0 } ?: 0)
                 }
-                PesoRow(p, dato, semNum, saldo, vm, ui.finalizada)
+                PesoRow(p, dato, semNum, saldo, vm, ui.finalizada, onAviso) { onGestionar(p) }
             }
         }
     }
 }
 
 @Composable
-fun PesoRow(p: Parcela, dato: DatoParcela, semNum: Int, saldo: Int, vm: DigitacionViewModel, bloqueada: Boolean) {
+fun PesoRow(
+    p: Parcela, dato: DatoParcela, semNum: Int, saldo: Int, vm: DigitacionViewModel, bloqueada: Boolean,
+    onAviso: () -> Unit = {}, onGestionar: () -> Unit = {}
+) {
+    val suspendida = p.suspendida
     // Simpler cleanId: remove "G" + digit if starts with it
     val displayId = remember(p.id) { 
         if (p.id.startsWith("G", ignoreCase = true) && p.id.getOrNull(1)?.isDigit() == true) p.id.substring(2) else p.id 
     }
 
+    val est = estiloFila(suspendida, Color.White, SurfaceMuted, StateSuccessSurfaceAlt, GreenDeep)
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().avisoSiSuspendida(suspendida, onAviso),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = est.fondo),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(modifier = Modifier.width(45.dp), color = StateSuccessSurfaceAlt, shape = RoundedCornerShape(12.dp)) {
-                Text(displayId, Modifier.padding(vertical = 4.dp), textAlign = TextAlign.Center, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = GreenDeep)
-            }
+            ChipParcela(displayId, suspendida, 45.dp, est.chip, est.texto, RoundedCornerShape(12.dp), FontWeight.ExtraBold, 12.sp, onGestionar)
             
             Text(
                 text = saldo.toString(),
@@ -519,7 +640,8 @@ fun PesoRow(p: Parcela, dato: DatoParcela, semNum: Int, saldo: Int, vm: Digitaci
 }
 
 @Composable
-fun AlimentoMatrix(parcels: List<Parcela>, semNum: Int, ui: DigitacionUiState, vm: DigitacionViewModel) {
+fun AlimentoMatrix(parcels: List<Parcela>, semNum: Int, ui: DigitacionUiState, vm: DigitacionViewModel,
+                   onAviso: () -> Unit = {}, onGestionar: (Parcela) -> Unit = {}) {
     val activeRefs = ui.semana?.refsActivas ?: listOf("BR1")
     val allPossibleRefs = listOf("BR1", "BR2", "BR3", "BR4")
     val scrollState = rememberScrollState()
@@ -626,7 +748,7 @@ fun AlimentoMatrix(parcels: List<Parcela>, semNum: Int, ui: DigitacionUiState, v
             items(parcels, key = { it.id }) { p ->
                 val dato = ui.datos[p.id]?.get(semNum) ?: DatoParcela(semNum, p.id)
                 val datoAnt = ui.datos[p.id]?.get(semNum - 1)
-                AlimentoRow(p.id, ui.semana, semNum, dato, datoAnt, vm, scrollState, ui.finalizada)
+                AlimentoRow(p.id, ui.semana, semNum, dato, datoAnt, vm, scrollState, ui.finalizada, p.suspendida, onAviso) { onGestionar(p) }
             }
         }
     }
@@ -641,21 +763,23 @@ fun AlimentoRow(
     datoAnt: DatoParcela?,
     vm: DigitacionViewModel,
     scrollState: androidx.compose.foundation.ScrollState,
-    bloqueada: Boolean
+    bloqueada: Boolean,
+    suspendida: Boolean = false,
+    onAviso: () -> Unit = {},
+    onGestionar: () -> Unit = {}
 ) {
     val activeRefs = semana?.refsActivas ?: listOf("BR1")
     val displayId = remember(pId) { if (pId.startsWith("G", ignoreCase = true) && pId.getOrNull(1)?.isDigit() == true) pId.substring(2) else pId }
 
+    val est = estiloFila(suspendida, Color.White, Border, StateSuccessSurface, GreenSuccessText)
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().avisoSiSuspendida(suspendida, onAviso),
         shape = RoundedCornerShape(10.dp),
-        color = Color.White,
-        border = androidx.compose.foundation.BorderStroke(1.dp, Border)
+        color = est.fondo,
+        border = androidx.compose.foundation.BorderStroke(1.dp, est.borde)
     ) {
         Row(modifier = Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(modifier = Modifier.width(36.dp), color = StateSuccessSurface, shape = RoundedCornerShape(8.dp)) {
-                Text(displayId, Modifier.padding(vertical = 4.dp), textAlign = TextAlign.Center, fontWeight = FontWeight.Black, fontSize = 11.sp, color = GreenSuccessText)
-            }
+            ChipParcela(displayId, suspendida, 36.dp, est.chip, est.texto, RoundedCornerShape(8.dp), FontWeight.Black, 11.sp, onGestionar)
             Spacer(Modifier.width(6.dp))
             
             // Row scrollable
@@ -777,4 +901,72 @@ fun AlimentoCellMinimal(value: Double?, modifier: Modifier = Modifier, isAjuste:
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
         )
     }
+}
+
+
+/** Suspender o reactivar una jaula, pendiente de confirmar con el PIN. */
+private data class AccionSuspension(val parcela: Parcela, val suspender: Boolean, val motivo: String)
+
+/**
+ * Diálogo de suspensión. Al suspender pide un motivo —opcional, pero va a los reportes,
+ * porque una exclusión sin causa no se puede defender—. Al reactivar muestra el motivo
+ * guardado para que quien decide vea de qué se trataba.
+ */
+@Composable
+private fun DialogoSuspension(
+    parcela: Parcela,
+    onDismiss: () -> Unit,
+    onConfirmar: (suspender: Boolean, motivo: String) -> Unit
+) {
+    val suspender = !parcela.suspendida
+    var motivo by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (suspender) "Suspender ${parcela.id}" else "Reactivar ${parcela.id}") },
+        text = {
+            Column {
+                if (suspender) {
+                    Text(
+                        "La jaula deja de contar en los indicadores de su tratamiento, de la galera " +
+                        "y del lote, y no se le exigirán datos para cerrar la semana. " +
+                        "Podés seguir digitándola: el dato queda registrado.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = motivo,
+                        onValueChange = { motivo = it },
+                        label = { Text("Motivo (aparece en los reportes)") },
+                        singleLine = false,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    Text(
+                        "La jaula vuelve a contar en todos los indicadores y se le volverán a " +
+                        "exigir datos para cerrar la semana.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (parcela.suspendidaMotivo.isNotBlank()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Se suspendió por: ${parcela.suspendidaMotivo}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirmar(suspender, motivo) }) {
+                Text(
+                    if (suspender) "Suspender" else "Reactivar",
+                    color = if (suspender) Danger else AvicolaPrimary,
+                    fontWeight = FontWeight.Black
+                )
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
 }

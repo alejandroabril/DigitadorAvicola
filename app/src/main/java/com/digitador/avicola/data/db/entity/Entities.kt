@@ -101,7 +101,11 @@ data class ParcelaEntity(
     val corralId: String,
     val inicio: Int = 0,
     val pesoInicio: Double = 0.0,
-    val orden: Int = 0
+    val orden: Int = 0,
+    /** Jaula retirada del análisis (ver `Parcela.suspendida`). */
+    val suspendida: Boolean = false,
+    val suspendidaEn: Long = 0L,
+    val suspendidaMotivo: String = ""
 )
 
 // ── Semana ───────────────────────────────────────────────────

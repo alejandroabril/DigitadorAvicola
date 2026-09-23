@@ -188,6 +188,70 @@ class ImportarDaviTest {
         assertNull(estado.datosPorParcela["G1-K1-P2"]?.get(1)?.peso)
     }
 
+    @Test
+    fun `la suspension de una jaula viaja en el respaldo davi`() = runBlocking {
+        e.repo.guardarPartida(e.loteDeEjemplo(numero = "7000", uid = "uid-susp", galeras = 1, corrales = 1, parcelas = 3))
+        e.repo.upsertSemana(Semana(numero = 1, refsActivas = listOf("BR1")))
+        e.repo.savePeso(1, "G1-K1-P1", 180.0)
+        e.repo.setParcelaSuspendida("G1-K1-P2", true, "jaula comprometida")
+
+        val json = e.export.exportarLote(e.context).readText()
+        val nuevoId = e.export.importarDesdeJson(json, comoCopia = true).getOrThrow()
+
+        val jaulas = e.jaulas(e.repo.cargarEstado(nuevoId).partida!!)
+        val susp = jaulas.first { it.id == "G1-K1-P2" }
+        assertTrue("la copia perdió la suspensión", susp.suspendida)
+        assertEquals("jaula comprometida", susp.suspendidaMotivo)
+        assertEquals("suspendió jaulas de más", 1, jaulas.count { it.suspendida })
+    }
+
+    /**
+     * Un `.davi` generado ANTES de la suspensión de jaulas no trae esos campos. Gson no
+     * aplica los valores por defecto de Kotlin, así que sin sanearlos en la frontera el
+     * import revienta con NullPointerException al leer el motivo.
+     */
+    @Test
+    fun `un respaldo anterior a la suspension se importa igual`() = runBlocking {
+        val viejo = """
+        {
+          "version": 1,
+          "exportedAt": 1750000000000,
+          "partida": {
+            "id": 0, "numero": "VIEJO-1", "lote": "L", "edad": "1d",
+            "fechaInicio": "2026-01-01", "usarGuia": true, "finalizada": false, "uid": "uid-viejo",
+            "galeras": [{
+              "id": "G1", "nombre": "Galera 1",
+              "corrales": [{
+                "id": "G1-K1", "galeraId": "G1",
+                "parcelas": [
+                  {"id": "G1-K1-P1", "corralId": "G1-K1", "inicio": 20, "pesoInicio": 800.0},
+                  {"id": "G1-K1-P2", "corralId": "G1-K1", "inicio": 20, "pesoInicio": 810.0}
+                ]
+              }]
+            }]
+          },
+          "semanas": [{"numero": 1, "fechaInicio": "2026-01-01", "fechaFin": "2026-01-07",
+                       "refsActivas": ["BR1"], "cerrada": false}],
+          "datosPorParcela": {
+            "G1-K1-P1": {"1": {"semanaNumero": 1, "parcelaId": "G1-K1-P1",
+                               "mort": [0,0,0,0,0,0,0], "peso": 170.0, "pesos": [], "refs": {}}}
+          }
+        }
+        """.trimIndent()
+
+        val id = e.export.importarDesdeJson(viejo).getOrThrow()
+        val p = e.repo.cargarEstado(id).partida!!
+
+        assertEquals("VIEJO-1", p.numero)
+        assertEquals(2, e.jaulas(p).size)
+        // Todas activas y con el motivo en cadena vacía, nunca en null.
+        e.jaulas(p).forEach {
+            assertFalse(it.suspendida)
+            assertEquals("", it.suspendidaMotivo)
+        }
+        assertEquals(170.0, e.repo.cargarEstado(id).datosPorParcela["G1-K1-P1"]!![1]!!.peso!!, 1e-9)
+    }
+
     // ── Robustez ─────────────────────────────────────────────────
 
     /**

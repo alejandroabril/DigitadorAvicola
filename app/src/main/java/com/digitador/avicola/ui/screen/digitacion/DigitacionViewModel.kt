@@ -94,6 +94,28 @@ class DigitacionViewModel @Inject constructor(
         }
     }
 
+    /** El PIN protege suspender y reactivar: ambas cambian qué entra en el análisis. */
+    fun pinHabilitado(): Boolean = config.pinHabilitado.value
+    fun verificarPin(p: String): Boolean = config.verificarPin(p)
+
+    /**
+     * Suspende o reactiva una jaula. Al volver del repositorio, `parcels` se refresca
+     * desde el estado recargado para que la fila cambie de aspecto en el acto.
+     */
+    fun setParcelaSuspendida(parcelaId: String, suspendida: Boolean, motivo: String = "") {
+        viewModelScope.launch {
+            repo.setParcelaSuspendida(parcelaId, suspendida, motivo)
+            val st = _ui.value
+            val galera = repo.appState.value.partida?.galeras?.find { it.id == st.galera?.id }
+            _ui.update { it.copy(
+                galera = galera,
+                parcels = parcelasDe(galera, st.activeGroup, st.porTratamiento),
+                datos = repo.appState.value.datosPorParcela
+            ) }
+            recalcKpis()
+        }
+    }
+
     fun setCategory(cat: DigitacionCategory) {
         _ui.update { it.copy(activeCategory = cat) }
     }

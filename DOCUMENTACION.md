@@ -70,7 +70,7 @@ DigitadorApp.kt          Application con @HiltAndroidApp.
 di/AppModule.kt          Provee DigitadorDatabase + DAOs (Hilt, Singleton).
 data/
   db/
-    DigitadorDatabase.kt  @Database (v11) + migraciones 7→8, 8→9, 9→10, 10→11.
+    DigitadorDatabase.kt  @Database (v12) + migraciones 7→8 … 11→12.
     entity/Entities.kt    Entidades Room + Converters (listas ↔ JSON).
     dao/PartidaDao.kt     CRUD de partida/galera/corral/parcela/papelera/borradores.
     dao/SemanaDao.kt      CRUD de semana/dato_parcela/ref_alimento.
@@ -119,7 +119,7 @@ Partida (lote)
 ## 5. Base de datos (Room)
 
 Archivo físico: `digitador_avicola.db` (almacenamiento interno de la app).
-Versión actual: **11**. Esquemas exportados a [`app/schemas/`](app/schemas) (desde la v7).
+Versión actual: **12**. Esquemas exportados a [`app/schemas/`](app/schemas) (desde la v7).
 
 **Entidades** (`data/db/entity/Entities.kt`):
 | Tabla | PK | Notas |
@@ -179,6 +179,14 @@ Toda la matemática está en [`domain/Calculadora.kt`](app/src/main/java/com/dig
 | **Ratio** (solo semana 1) | `pesoProm / pesoPrevio(recepción)`. |
 | **FEP** (opcional) | `(viabilidad × peso_kg) / (edad_días × FCRacum) × 100`. |
 | **FCR ajustado** (sem ≥5, opcional) | `FCRacum + (2500 − pesoProm) / 3200`. |
+
+**Jaulas suspendidas.** Una parcela con `suspendida = true` se sigue digitando —el dato de
+campo se conserva— pero no entra en ningún indicador: se filtra en los **seis** puntos de
+`Calculadora` (`computeMetricasDeParcelas`, `cvPesoDeParcelas`, `validarSemana` y las tres
+de progreso). La suspensión es TOTAL, vale para todas las semanas: si valiera solo desde
+una, las series acumuladas de un tratamiento mezclarían composiciones distintas. Sale
+marcada en el Excel (columna `SUSPENDIDA`) y en una nota del PDF con su motivo — una
+exclusión invisible no se puede defender ante quien revise el ensayo.
 
 > ✅ **Un solo motor.** La unidad de cálculo es la jaula: `Calculadora.computeMetricasParcela`
 > devuelve un `MetricasParcela` con todos los indicadores. Si hacen falta varias semanas

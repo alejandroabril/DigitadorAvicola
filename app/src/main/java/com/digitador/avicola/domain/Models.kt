@@ -39,8 +39,24 @@ data class Parcela(
     val id: String,
     val corralId: String,
     val inicio: Int = 0,
-    val pesoInicio: Double = 0.0
-)
+    val pesoInicio: Double = 0.0,
+    /**
+     * Jaula retirada del análisis. Se le sigue digitando —el dato de campo se conserva—
+     * pero no entra en ningún indicador: ni en su tratamiento, ni en la galera, ni en el
+     * lote, ni en la uniformidad. Tampoco se le exige información para cerrar la semana.
+     * La suspensión es TOTAL: vale para todas las semanas, incluidas las ya pasadas, para
+     * que las series acumuladas de un tratamiento no mezclen composiciones distintas.
+     */
+    val suspendida: Boolean = false,
+    /** Cuándo se suspendió (ms). 0 si nunca se suspendió. */
+    val suspendidaEn: Long = 0L,
+    /** Motivo anotado al suspenderla. Va a los reportes: una exclusión sin causa no se
+     *  puede defender ante quien revise el ensayo. */
+    val suspendidaMotivo: String = ""
+) {
+    /** Jaulas que entran en el análisis: con aves y no suspendidas. */
+    val cuentaEnAnalisis: Boolean get() = !suspendida
+}
 
 @Immutable
 data class Semana(

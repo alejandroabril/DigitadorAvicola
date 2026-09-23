@@ -22,7 +22,7 @@ import com.digitador.avicola.data.db.entity.*
         RefAlimentoEntity::class,
         BorradorLoteEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -72,6 +72,18 @@ abstract class DigitadorDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Suspensión de jaulas del análisis. Solo añade columnas; ningún lote existente
+         * cambia de comportamiento, porque todas nacen sin suspender.
+         */
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE parcela ADD COLUMN suspendida INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE parcela ADD COLUMN suspendidaEn INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE parcela ADD COLUMN suspendidaMotivo TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getInstance(context: Context): DigitadorDatabase =
             INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(
@@ -79,7 +91,7 @@ abstract class DigitadorDatabase : RoomDatabase() {
                     DigitadorDatabase::class.java,
                     "digitador_avicola.db"
                 )
-                    .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     // Solo recrea la BD (con pérdida) si se viene de versiones PREVIAS a la
                     // exportación de esquema (1..6), improbables en campo. De la v7 en adelante
                     // se migran datos; un salto futuro SIN migración fallará en vez de borrar

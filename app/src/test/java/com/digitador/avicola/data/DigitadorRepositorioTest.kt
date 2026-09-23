@@ -200,6 +200,49 @@ class DigitadorRepositorioTest {
         assertFalse(estado.getSemana(1)!!.cerrada)
     }
 
+    // ── Suspensión de jaulas ─────────────────────────────────
+
+    @Test
+    fun `suspender una jaula se guarda con su motivo y sobrevive a la recarga`() = runBlocking {
+        val id = e.repo.guardarPartida(e.loteDeEjemplo(galeras = 1, corrales = 1, parcelas = 3))
+
+        e.repo.setParcelaSuspendida("G1-K1-P2", true, "  mortalidad por golpe de calor  ")
+
+        val jaulas = e.jaulas(e.repo.cargarEstado(id).partida!!)
+        val susp = jaulas.first { it.id == "G1-K1-P2" }
+        assertTrue(susp.suspendida)
+        assertEquals("el motivo no se recortó", "mortalidad por golpe de calor", susp.suspendidaMotivo)
+        assertTrue("no se registró cuándo", susp.suspendidaEn > 0)
+
+        assertTrue("arrastró a las demás", jaulas.filter { it.id != "G1-K1-P2" }.none { it.suspendida })
+    }
+
+    @Test
+    fun `reactivar limpia el motivo y la fecha`() = runBlocking {
+        val id = e.repo.guardarPartida(e.loteDeEjemplo(galeras = 1, corrales = 1, parcelas = 2))
+        e.repo.setParcelaSuspendida("G1-K1-P1", true, "se comprometió")
+        e.repo.setParcelaSuspendida("G1-K1-P1", false)
+
+        val p = e.jaulas(e.repo.cargarEstado(id).partida!!).first { it.id == "G1-K1-P1" }
+        assertFalse(p.suspendida)
+        assertEquals("quedó el motivo de una suspensión ya levantada", "", p.suspendidaMotivo)
+        assertEquals(0L, p.suspendidaEn)
+    }
+
+    /** Guardar el lote de nuevo (editar la recepción, reimportar) no puede perder la suspensión. */
+    @Test
+    fun `volver a guardar el lote conserva las jaulas suspendidas`() = runBlocking {
+        val id = e.repo.guardarPartida(e.loteDeEjemplo(galeras = 1, corrales = 1, parcelas = 2))
+        e.repo.setParcelaSuspendida("G1-K1-P1", true, "motivo")
+
+        val estado = e.repo.cargarEstado(id)
+        e.repo.guardarPartida(estado.partida!!)
+
+        val p = e.jaulas(e.repo.cargarEstado(id).partida!!).first { it.id == "G1-K1-P1" }
+        assertTrue("guardar el lote borró la suspensión", p.suspendida)
+        assertEquals("motivo", p.suspendidaMotivo)
+    }
+
     private fun db_countDatos(): Int = e.db.query("SELECT COUNT(*) FROM dato_parcela", null)
         .use { it.moveToFirst(); it.getInt(0) }
 

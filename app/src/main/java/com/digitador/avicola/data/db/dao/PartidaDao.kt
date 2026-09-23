@@ -131,6 +131,9 @@ interface PartidaDao {
         if (insertParcela(p) == -1L) updateParcela(p)
     }
 
+    @Query("SELECT * FROM parcela WHERE id = :id AND partidaId = :partidaId")
+    suspend fun getParcela(id: String, partidaId: Long): ParcelaEntity?
+
     @Query("DELETE FROM parcela WHERE partidaId = :partidaId")
     suspend fun deleteParcelasByPartida(partidaId: Long)
 

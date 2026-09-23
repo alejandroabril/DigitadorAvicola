@@ -383,9 +383,21 @@ filas del lote en cada borrado en cascada de `parcela` (purgar la papelera, reim
 distribución distinta). Medido sobre 300 jaulas × 30 semanas, borrar 150 jaulas en
 cascada pasó de 127 ms a 19 ms.
 
+**v11 → v12 (suspensión de jaulas):** añade a `parcela` las columnas `suspendida`,
+`suspendidaEn` y `suspendidaMotivo`. Solo añade columnas; los lotes existentes quedan
+todos activos. Verificada contra SQLite: el juego de columnas resultante coincide con el
+que Room declara para la v12 y los datos quedan intactos.
+
+> ⚠️ **Gson y los campos nuevos.** El `.davi` de respaldo deserializa el modelo de dominio
+> directamente, y Gson construye los objetos **sin pasar por el constructor de Kotlin**:
+> un `String` no-nulo ausente en el JSON queda en `null` y el primer `ifBlank` que lo
+> toque lanza NPE. Los archivos anteriores a este cambio no traen esos campos. Por eso
+> `ExportService.sanearCamposNuevos()` los normaliza en la frontera del import. **Al
+> añadir un campo al dominio hay que ampliarla**, o los respaldos viejos dejan de abrirse.
+
 **Fallback destructivo acotado:** `fallbackToDestructiveMigrationFrom(1, 2, 3, 4, 5, 6)`. Solo recrea la BD (con pérdida) si se viene de versiones **previas** a la exportación de esquema (1..6), improbables en campo. De la **v7 en adelante** los datos se migran; **un salto futuro SIN migración FALLARÁ** en vez de borrar en silencio.
 
-El esquema se exporta a `app/schemas/…/{7,8,9,10,11}.json` desde la v7.
+El esquema se exporta a `app/schemas/…/{7,8,9,10,11,12}.json` desde la v7.
 
 > ### 🔧 REGLA al cambiar el esquema
 > 1. Modificar la entidad (añadir/quitar columna, índice, etc.).

@@ -240,12 +240,16 @@ object Calculadora {
         datosPorParcela: Map<String, Map<Int, DatoParcela>>,
         refsExcluidasPorSemana: Map<Int, Set<String>> = emptyMap()
     ): MetricasCorral? {
-        if (parcelas.isEmpty()) return null
+        // Las jaulas suspendidas quedan fuera de TODO el indicador: de los promedios, del
+        // saldo y también del denominador de la mortalidad acumulada. Se filtran aquí, en
+        // la única puerta de entrada de la agregación.
+        val activas = parcelas.filter { it.cuentaEnAnalisis }
+        if (activas.isEmpty()) return null
 
         // La semana que se está viendo manda, aunque no esté en la lista recibida.
         val semanas = if (todasSemanas.any { it.numero == semNum }) todasSemanas else todasSemanas + semana
 
-        val metricas = parcelas.map { par ->
+        val metricas = activas.map { par ->
             computeMetricasParcela(par, semNum, semanas, datosPorParcela[par.id] ?: emptyMap(), refsExcluidasPorSemana)
         }
 
@@ -378,7 +382,7 @@ object Calculadora {
         val refsReq = refsActivas.filter { it !in refsExcluidas }
         val parcelas = partida.galeras
             .flatMap { it.corrales }.flatMap { it.parcelas }
-            .filter { it.inicio != 0 }
+            .filter { it.inicio != 0 && it.cuentaEnAnalisis }
         val total = parcelas.size
 
         var faltanPeso = 0
@@ -411,7 +415,7 @@ object Calculadora {
         var total = 0; var filled = 0; var mtotal = 0; var mfilled = 0
         val refsActivas = semana?.refsActivas ?: listOf("BR1")
         for (g in partida.galeras) for (k in g.corrales) for (par in k.parcelas) {
-            if (par.inicio == 0) continue
+            if (par.inicio == 0 || !par.cuentaEnAnalisis) continue
             val d = datosPorParcela[par.id]?.get(semNum)
             total += 2
             if (d?.peso != null) filled++
@@ -441,7 +445,7 @@ object Calculadora {
         val acum = semanas.associate { it.numero to IntArray(4) }
 
         for (g in partida.galeras) for (k in g.corrales) for (par in k.parcelas) {
-            if (par.inicio == 0) continue
+            if (par.inicio == 0 || !par.cuentaEnAnalisis) continue
             val datos = datosPorParcela[par.id]
             for (s in semanas) {
                 val a = acum[s.numero] ?: continue
@@ -466,7 +470,7 @@ object Calculadora {
         val refsActivas = semana?.refsActivas ?: listOf("BR1")
         var total = 0; var filled = 0
         for (k in galera.corrales) for (par in k.parcelas) {
-            if (par.inicio == 0) continue
+            if (par.inicio == 0 || !par.cuentaEnAnalisis) continue
             val d = datosPorParcela[par.id]?.get(semNum)
             total += 2
             if (d?.peso != null) filled++
@@ -494,6 +498,7 @@ object Calculadora {
     ): CvPeso? {
         val pesos = mutableListOf<Double>()
         for (par in parcelas) {
+            if (!par.cuentaEnAnalisis) continue   // suspendida: no entra en la uniformidad
             val datosByPar = datosPorParcela[par.id] ?: emptyMap()
             val saldoAnt = getSaldoAnterior(semNum, par.id, par, datosByPar)
             val mort = datosByPar[semNum]?.mort?.sumOf { it ?: 0 } ?: 0

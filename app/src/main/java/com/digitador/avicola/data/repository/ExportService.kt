@@ -323,6 +323,28 @@ class ExportService @Inject constructor(
             }
         }
 
+        // Nota de jaulas suspendidas: los indicadores de arriba no las cuentan, así que el
+        // informe tiene que decir cuáles y por qué. Una exclusión invisible no se sostiene.
+        run {
+            val suspendidas = partida.galeras
+                .flatMap { g -> g.corrales.flatMap { c -> c.parcelas.map { g to it } } }
+                .filter { (_, par) -> par.suspendida }
+            if (suspendidas.isNotEmpty()) {
+                asegurar(16f + suspendidas.size * 12f)
+                canvas.drawText(
+                    "Jaulas suspendidas del análisis (${suspendidas.size}): no entran en ningún indicador de este informe.",
+                    margin, y + 10f, pCellB
+                )
+                y += 16f
+                suspendidas.forEach { (g, par) ->
+                    val motivo = par.suspendidaMotivo.ifBlank { "sin motivo anotado" }
+                    canvas.drawText("•  ${g.nombre} · ${par.id}  —  $motivo", margin + 8f, y + 8f, pSub)
+                    y += 12f
+                }
+                y += 10f
+            }
+        }
+
         // ── Sección: Coeficiente de variación del peso (HOJA APARTE) ────────
         // Mismo cálculo que la planilla (DesvEst muestral / promedio de los pesos
         // promedio de las jaulas) en tres niveles: tratamiento, galera y global.
@@ -827,7 +849,7 @@ class ExportService @Inject constructor(
 
         // El orden debe coincidir con el de escritura de filas: 2.5 KG, RATIO, 2 KG, 2.7 KG.
         val headers = listOf(
-            "BLOQUE", "PARCELA", "SEMANA", "TRATAMIENTO", "REPETICIÓN",
+            "BLOQUE", "PARCELA", "SEMANA", "TRATAMIENTO", "REPETICIÓN", "SUSPENDIDA",
             "PESO (g)", "CONSUMO SEMANAL (g)", "CONSUMO ACUMULADO (g)",
             "FCR SEMANAL", "FCR ACUMULADO", "GDP SEMANAL", "GDP LINEAL",
             "% MORTALIDAD", "% MORTALIDAD ACUMULADA", "RATIO"
@@ -919,6 +941,10 @@ class ExportService @Inject constructor(
                         row.put(c++, semNum.toDouble(), sInt)
                         row.put(c++, tratamiento, sTxt)
                         row.put(c++, rep.toDouble(), sInt)
+                        // La fila de una jaula suspendida se conserva con sus datos: los
+                        // indicadores no la cuentan, pero el registro tiene que mostrar
+                        // que hubo una exclusión y cuál.
+                        row.put(c++, if (parcela.suspendida) "Sí" else "No", sTxt)
                         row.put(c++, pesoGave, sD1)
                         row.put(c++, consGaveSem, sD1)
                         row.put(c++, consAcumGave, sD1)
@@ -1117,7 +1143,8 @@ class ExportService @Inject constructor(
         val dump = com.google.gson.Gson().fromJson(json, BackupDump::class.java)
             ?: return Result.failure(IllegalArgumentException("JSON de backup inválido"))
 
-        val original = dump.partida ?: return Result.failure(IllegalArgumentException("No hay partida"))
+        val original = (dump.partida ?: return Result.failure(IllegalArgumentException("No hay partida")))
+            .sanearCamposNuevos()
 
         // Resolver número único y UID según si es copia o importación directa.
         val numeroFinal = if (comoCopia || repo.existeOtraPartidaConNumero(original.numero, -1L))
@@ -1169,7 +1196,13 @@ class ExportService @Inject constructor(
                             id = k.id,
                             galeraId = g.id,
                             parcelas = k.parcelas.map { par ->
-                                Parcela(par.id, k.id, par.inicio, par.pesoInicio)
+                                Parcela(
+                                    id = par.id, corralId = k.id,
+                                    inicio = par.inicio, pesoInicio = par.pesoInicio,
+                                    suspendida = par.suspendida,
+                                    suspendidaEn = if (par.suspendida) System.currentTimeMillis() else 0L,
+                                    suspendidaMotivo = par.suspendidaMotivo ?: ""
+                                )
                             }
                         )
                     }
@@ -1207,11 +1240,40 @@ class ExportService @Inject constructor(
 
     // ── DTOs para el formato experimental ────────────────────────
 
+    /**
+     * Rellena los campos que un `.davi` viejo no trae.
+     *
+     * Gson crea los objetos sin pasar por el constructor de Kotlin, así que un `String`
+     * declarado no-nulo queda en `null` si la clave falta en el JSON, y el primer
+     * `ifBlank` que lo toque lanza NullPointerException. Al añadir campos al modelo hay
+     * que normalizarlos aquí, en la frontera, en vez de ensuciar el dominio con tipos
+     * anulables.
+     */
+    @Suppress("USELESS_ELVIS")
+    private fun Partida.sanearCamposNuevos(): Partida = copy(
+        uid = uid ?: "",
+        galeras = galeras.map { g ->
+            g.copy(corrales = g.corrales.map { c ->
+                c.copy(parcelas = c.parcelas.map { par ->
+                    par.copy(suspendidaMotivo = par.suspendidaMotivo ?: "")
+                })
+            })
+        }
+    )
+
     private data class ExpRoot(val partida: ExpPartida, val semanas: List<ExpSemana>)
     private data class ExpPartida(val numero: String, val lote: String, val edad: String, val fechaInicio: String, val galeras: List<ExpGalera>)
     private data class ExpGalera(val id: String, val nombre: String, val corrales: List<ExpCorral>)
     private data class ExpCorral(val id: String, val parcelas: List<ExpParcela>)
-    private data class ExpParcela(val id: String, val inicio: Int, val pesoInicio: Double)
+    private data class ExpParcela(
+        val id: String, val inicio: Int, val pesoInicio: Double,
+        // Ausentes en los archivos anteriores a la suspensión de jaulas. Gson NO aplica los
+        // valores por defecto de Kotlin: un Boolean primitivo queda en false, pero un
+        // String no-nulo queda en null y revienta al construir el modelo. De ahí el tipo
+        // anulable y el ?: de abajo.
+        val suspendida: Boolean = false,
+        val suspendidaMotivo: String? = null
+    )
     private data class ExpSemana(val numero: Int, val fechaInicio: String, val fechaFin: String, val refs: List<String>, val datos: Map<String, Map<String, Map<String, ExpDato>>>)
     private data class ExpDato(val mort: List<Int?>, val peso: Double?, val refs: Map<String, ExpRef>, val consAjust: Double?)
     private data class ExpRef(val ingreso: Double?, val saldoFin: Double?)
