@@ -197,15 +197,6 @@ Esta es la más completa. Arriba tenés los botones **"REFS ACTIVAS"** (BR1, BR2
 
 También hay una columna **ADJ** (ajuste) por si necesitás corregir el consumo de una parcela puntual.
 
-### Replicado del primer ingreso (te ahorra tipear)
-
-Muchas veces a todas las parcelas se les pone **la misma cantidad** de alimento. Para no escribir el mismo número una y otra vez, la app hace esto:
-
-- Cargás el **ingreso de la primera parcela**.
-- Un segundo después, la app **copia ese valor** a todas las demás parcelas que todavía tengan la casilla de ingreso **vacía**.
-
-Después podés cambiar libremente las que sean distintas: si vos escribís un valor propio en una parcela, la app **no lo pisa**. Y si vaciás una casilla a propósito, la app **no la vuelve a rellenar**.
-
 ### El check "Excluir"
 
 Debajo de cada referencia de alimento (BR1, BR2…) hay un botón chico **"Excluir"**. Sirve para cuando una referencia **no la querés contar** en los indicadores de esa semana (por ejemplo, un alimento de prueba o una carga que no corresponde al análisis).

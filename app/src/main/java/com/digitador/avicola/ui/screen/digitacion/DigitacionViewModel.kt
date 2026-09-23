@@ -53,20 +53,13 @@ class DigitacionViewModel @Inject constructor(
     val ui: StateFlow<DigitacionUiState> = _ui.asStateFlow()
 
     private var kpiJob: Job? = null
-    private var replicaIngresoJob: Job? = null
     private var saveJob: Job? = null
-    /** Última sugerencia de ingreso aplicada por referencia (para corregir réplicas sin pisar overrides). */
-    private val sugeridoIngreso = mutableMapOf<String, Double>()
-    /** Casillas de ingreso ("tipo|pId") que el usuario vació a propósito → no se re-rellenan. */
-    private val ingresoBorrado = mutableSetOf<String>()
 
     fun cargar(semNum: Int, galeraId: String, prefGroup: String? = null) {
         if (_ui.value.galera?.id == galeraId && _ui.value.semana?.numero == semNum && !ui.value.loading) return
 
         viewModelScope.launch {
             _ui.update { it.copy(loading = true) }
-            sugeridoIngreso.clear()
-            ingresoBorrado.clear()
             val state = repo.appState.value.let {
                 if (it.partida == null) repo.cargarEstado() else it 
             }
@@ -106,8 +99,6 @@ class DigitacionViewModel @Inject constructor(
     }
 
     fun setGroup(group: String) {
-        sugeridoIngreso.clear()   // la sugerencia es por grupo (línea/tratamiento)
-        ingresoBorrado.clear()
         val filtered = parcelasDe(_ui.value.galera, group, _ui.value.porTratamiento)
         _ui.update { it.copy(activeGroup = group, parcels = filtered) }
         recalcKpis()
@@ -143,60 +134,6 @@ class DigitacionViewModel @Inject constructor(
             galera.corrales.flatMap { it.parcelas }
                 .filter { lineaDe(it.id) == group }
                 .sortedBy { it.id }
-        }
-    }
-
-    /**
-     * Tras un debounce, replica el PRIMER ingreso cargado (por referencia) a las
-     * casillas de ingreso que sigan VACÍAS de las parcelas visibles. Nunca pisa un
-     * valor ya cargado (incluido un 0), así que el usuario puede sobreescribir libremente.
-     */
-    private fun programarReplicaIngreso() {
-        replicaIngresoJob?.cancel()
-        replicaIngresoJob = viewModelScope.launch {
-            delay(700)
-            replicarIngresoAVacios()
-        }
-    }
-
-    private fun replicarIngresoAVacios() {
-        if (_ui.value.finalizada) return
-        val st = _ui.value
-        val semNum = st.semana?.numero ?: return
-        val tipos = st.semana?.refsActivas ?: return
-        val parcels = st.parcels
-        if (parcels.size < 2) return
-
-        val newDatos = st.datos.toMutableMap()
-        var changed = false
-        for (tipo in tipos) {
-            // Sugerencia = primer ingreso ya cargado para esta referencia (en orden de parcela).
-            val srcVal = parcels.firstNotNullOfOrNull { p ->
-                newDatos[p.id]?.get(semNum)?.refs?.get(tipo)?.ingreso
-            } ?: continue
-            val prev = sugeridoIngreso[tipo]   // sugerencia anterior (para corregir, no pisar overrides)
-            for (p in parcels) {
-                if ("$tipo|${p.id}" in ingresoBorrado) continue   // respetar lo que el usuario vació
-                val dato = newDatos[p.id]?.get(semNum) ?: DatoParcela(semNum, p.id)
-                val ref = dato.refs[tipo] ?: RefAlimento(tipo)
-                // Rellenar si está vacío o si quedó con la sugerencia anterior (valor parcial),
-                // nunca si el usuario puso un valor propio distinto.
-                val rellenable = ref.ingreso == null || (prev != null && ref.ingreso == prev)
-                if (rellenable && ref.ingreso != srcVal) {
-                    val newRefs = dato.refs.toMutableMap()
-                    newRefs[tipo] = RefAlimento(tipo, srcVal, ref.saldoFin)
-                    val pm = newDatos[p.id]?.toMutableMap() ?: mutableMapOf()
-                    pm[semNum] = dato.copy(refs = newRefs)
-                    newDatos[p.id] = pm
-                    changed = true
-                }
-            }
-            sugeridoIngreso[tipo] = srcVal
-        }
-        if (changed) {
-            _ui.update { it.copy(datos = newDatos) }
-            scheduleKpis()
-            scheduleSave()
         }
     }
 
@@ -288,17 +225,6 @@ class DigitacionViewModel @Inject constructor(
         val newRefs = currentDato.refs.toMutableMap()
         newRefs[tipo] = RefAlimento(tipo, ing, sal)
         updateDatoLocal(semNum, pId, currentDato.copy(refs = newRefs))
-        if (field == "ingreso") {
-            val key = "$tipo|$pId"
-            if (doubleVal == null) {
-                // El usuario vació la casilla a propósito → no volver a rellenarla.
-                ingresoBorrado.add(key)
-            } else {
-                ingresoBorrado.remove(key)
-                // Sugerir este valor en las casillas de ingreso aún vacías.
-                programarReplicaIngreso()
-            }
-        }
         scheduleSave()
     }
 

@@ -198,7 +198,7 @@ Flujos aparte del VM: `modoPorTratamiento: StateFlow<Boolean>` (persistido en `C
 - **Edición con guards** — todos los `update*` retornan temprano si `finalizada`:
   - `updateMort(...)` valida que la mortalidad del día no exceda el saldo disponible (`:244-267`).
   - `updatePeso(...)` convierte peso total → promedio (`total/saldo`) (`:269-278`).
-  - `updateRef(...)` (ingreso/saldoFin por referencia) y `updateConsAjust(...)`; al cargar un ingreso programa **réplica** a casillas vacías; si el usuario vacía una casilla la marca como `ingresoBorrado` para no re-rellenarla (`:280-312`, `:154-201`).
+  - `updateRef(...)` (ingreso/saldoFin por referencia) y `updateConsAjust(...)`: escriben lo digitado en esa casilla y nada más. **No hay réplica automática entre parcelas** — se quitó porque rellenaba casillas que nadie había digitado.
   - `toggleRefExcluida(tipo)` persiste en `config.setRefExcluida(uid, sem, tipo, …)` (`:316-323`).
   - `toggleRef(tipo)` (activa/desactiva una referencia de la semana) (`:325-337`).
 - **Auto-save**:
