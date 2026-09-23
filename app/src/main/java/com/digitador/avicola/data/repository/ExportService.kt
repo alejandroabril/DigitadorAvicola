@@ -1017,10 +1017,26 @@ class ExportService @Inject constructor(
     suspend fun compartirApk(context: Context): File = withContext(Dispatchers.IO) {
         val origen = File(context.applicationInfo.sourceDir)
         val dir = exportsDir(context)
-        val version = try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        val info = try {
+            context.packageManager.getPackageInfo(context.packageName, 0)
         } catch (e: Exception) { null }
-        val nombre = "FlockTracker" + (version?.let { "_v$it" } ?: "") + ".apk"
+
+        // El nombre lleva versión Y código de versión: quien recibe el archivo por
+        // WhatsApp solo ve el nombre, y dos builds distintos con el mismo nombre se
+        // confunden. El código es además lo que Android compara para aceptar una
+        // actualización.
+        //
+        // Un build de depuración se instala como OTRA app (applicationId con sufijo
+        // .debug) y con sus propios datos, así que repartirlo por error deja al
+        // digitador con dos apps y los lotes en la que no toca. Va marcado en el nombre.
+        val esDepuracion = context.packageName.endsWith(".debug")
+        val nombre = buildString {
+            append("FlockTracker")
+            info?.versionName?.let { append("_v").append(it) }
+            info?.let { append("(").append(androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(it)).append(")") }
+            if (esDepuracion) append("_DEPURACION-NO-DISTRIBUIR")
+            append(".apk")
+        }
         val dest = File(dir, nombre)
         origen.copyTo(dest, overwrite = true)
         dest

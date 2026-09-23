@@ -265,6 +265,27 @@ En [`ExportService.kt`](app/src/main/java/com/digitador/avicola/data/repository/
 2. `Build > Make Project` o `./gradlew assembleDebug` / `assembleRelease`.
 3. Al cambiar el esquema de Room, **el rebuild regenera** `app/schemas/<n>.json` (úsalo para escribir migraciones).
 
+### Subir la versión antes de repartir
+
+**Al tocar el esquema de la base hay que subir `versionCode`.** No es cosmético: sin eso,
+Android deja instalar un APK viejo encima de uno nuevo, y una app vieja sobre datos
+nuevos **no abre**. Comprobado abriendo con la app una base marcada con una versión
+superior:
+
+```
+IllegalStateException: A migration from 99 to 12 was required but not found
+```
+
+No hay camino de bajada ni fallback destructivo para ese caso —y es lo correcto: entre
+reventar y borrar los lotes del digitador, revienta—. La defensa es que el `versionCode`
+crezca, porque Android rechaza instalar uno menor sobre uno mayor.
+
+**Compartir app (APK)** copia el APK instalado, así que siempre reparte lo que hay en ese
+equipo. El archivo sale como `FlockTracker_v<versionName>(<versionCode>).apk`. Si el build
+es de depuración, el nombre lleva `_DEPURACION-NO-DISTRIBUIR`: ese APK se instala como una
+app aparte (`applicationId` con sufijo `.debug`) y con sus propios datos, así que repartirlo
+por error deja al digitador con dos apps y los lotes en la que no toca.
+
 ### Firmar el release
 
 El build ya está preparado: `app/build.gradle.kts` lee `keystore.properties` de la raíz
