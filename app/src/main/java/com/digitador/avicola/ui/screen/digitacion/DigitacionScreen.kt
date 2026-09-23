@@ -24,6 +24,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -487,15 +488,27 @@ private fun ChipParcela(
         color = fondo,
         shape = forma
     ) {
-        Text(
-            texto,
-            Modifier.padding(vertical = 4.dp),
-            textAlign = TextAlign.Center,
-            fontWeight = peso,
-            fontSize = tamano,
-            color = color,
-            textDecoration = if (suspendida) TextDecoration.LineThrough else null
-        )
+        // El ícono va superpuesto en la esquina, no en línea: las filas de mortalidad
+        // tienen siete columnas de días y no sobra ancho para un elemento más.
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                texto,
+                Modifier.padding(vertical = 4.dp),
+                textAlign = TextAlign.Center,
+                fontWeight = peso,
+                fontSize = tamano,
+                color = color,
+                textDecoration = if (suspendida) TextDecoration.LineThrough else null
+            )
+            Icon(
+                imageVector = if (suspendida) Icons.Filled.Block else Icons.Outlined.Block,
+                // Describe estado o acción, según corresponda: el lector de pantalla lo
+                // lee junto al identificador de la jaula.
+                contentDescription = if (suspendida) "Suspendida del análisis" else "Suspender del análisis",
+                tint = if (suspendida) color else color.copy(alpha = 0.5f),
+                modifier = Modifier.align(Alignment.TopEnd).size(9.dp)
+            )
+        }
     }
 }
 

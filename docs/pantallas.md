@@ -215,6 +215,12 @@ Flujos aparte del VM: `modoPorTratamiento: StateFlow<Boolean>` (persistido en `C
 - Tres matrices según categoría (`:132-138`):
   - **`MortalidadMatrix`** (`:328-432`): cabecera de 7 días (mes/día calculados desde `fechaInicio`), filas con badge de parcela + 7 celdas (`BasicTextField`, máx. 3 dígitos) + total. Las celdas son `readOnly`/`enabled` según `bloqueada` (= `ui.finalizada`).
   - **`PesoMatrix`** (`:434-519`): por parcela muestra aves vivas (saldo), campo de PESO TOTAL (g) y el promedio g/ave derivado.
+  - **Jaulas suspendidas.** Cada fila lleva en su distintivo un ícono `Block` chico,
+    superpuesto en la esquina: tenue cuando la jaula está activa (pista de que ahí se
+    suspende) y sólido cuando lo está. Tocar o mantener pulsado el distintivo abre el
+    diálogo; suspender y reactivar piden PIN. La fila suspendida va con fondo y borde
+    rojos y el identificador tachado, y tocarla muestra un Snackbar breve — el gesto se
+    observa **sin consumirlo**, así que el campo recibe el foco y se sigue digitando.
   - **`AlimentoMatrix`** (`:521-633`): selector de refs activas (chips BR1–BR4), y por cada ref las columnas ANT (read-only) / ING / SAL, más una columna ADJ (ajuste). El alimento se digita en **kg** (tooltip `UnidadGramosTip`). El **pill "Excluir/Excluida"** por referencia (`Surface` redondeado, ámbar relleno cuando está excluida, texto tachado en el header) → `vm.toggleRefExcluida(ref)` (`:580-608`). Celdas con `AlimentoCellMinimal` (selecciona todo al enfocar para reemplazar).
 - **Salida**: `BackHandler` y botón atrás del header muestran un overlay "Guardando cambios…" mientras `vm.persist { onBack() }` (`:73-80`, `:92-104`, `:142-163`).
 
