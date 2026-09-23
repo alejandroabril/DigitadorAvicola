@@ -230,8 +230,29 @@ class DigitacionViewModel @Inject constructor(
         val currentDato = getDato(semNum, pId)
         val total = value.toDoubleOrNull()
         val average = if (total != null && saldo > 0) total / saldo else null
-        if (currentDato.peso == average) return
-        updateDatoLocal(semNum, pId, currentDato.copy(peso = average))
+        if (currentDato.peso == average && currentDato.pesos.isEmpty()) return
+        // Si el total se escribe a mano, el desglose de pesadas deja de explicarlo:
+        // guardarlo sería dejar en el archivo una descomposición que no suma ese número.
+        updateDatoLocal(semNum, pId, currentDato.copy(peso = average, pesos = emptyList()))
+        scheduleKpis()
+        scheduleSave()
+    }
+
+    /**
+     * Resultado de la calculadora de pesadas. Las aves se pesan por grupos porque la
+     * balanza no aguanta la parcela entera, pero se pesan TODAS: la suma es el peso total
+     * de la jaula, y el promedio sale de dividirla entre las aves vivas, igual que cuando
+     * el total se escribe a mano.
+     *
+     * Se conserva el desglose para que el registro muestre cómo se llegó al total.
+     */
+    fun updatePesadas(semNum: Int, pId: String, pesadas: List<Double>, saldo: Int) {
+        if (_ui.value.finalizada) return
+        val dato = getDato(semNum, pId)
+        val limpias = pesadas.filter { it > 0.0 }
+        val total = limpias.sum()
+        val promedio = if (limpias.isNotEmpty() && saldo > 0) total / saldo else null
+        updateDatoLocal(semNum, pId, dato.copy(peso = promedio, pesos = limpias))
         scheduleKpis()
         scheduleSave()
     }
@@ -315,7 +336,7 @@ class DigitacionViewModel @Inject constructor(
             state.datos.forEach { (pId, datosPorSemana) ->
                 val dato = datosPorSemana[semNum] ?: return@forEach
                 repo.saveMortalidad(semNum, pId, dato.mort)
-                repo.savePeso(semNum, pId, dato.peso)
+                repo.savePeso(semNum, pId, dato.peso, dato.pesos)
                 dato.refs.forEach { (tipo, ref) ->
                     repo.saveRefAlimento(semNum, pId, tipo, ref.ingreso, ref.saldoFin)
                 }

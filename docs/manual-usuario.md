@@ -197,6 +197,23 @@ Esta es la más completa. Arriba tenés los botones **"REFS ACTIVAS"** (BR1, BR2
 
 También hay una columna **ADJ** (ajuste) por si necesitás corregir el consumo de una parcela puntual.
 
+### Sumar pesadas por grupos
+
+Cuando la balanza no aguanta todas las aves de una jaula de una vez, se pesan por grupos
+—de 10 en la semana 2, de 4 en la 3, según vaya creciendo el lote—. Para no ir sumando
+aparte:
+
+- Tocá el ícono de calculadora que está a la derecha de la casilla de **PESO TOTAL**.
+- Cargá el peso de cada grupo. Se van listando, y podés borrar el que digitaste mal.
+- Abajo ves el **total** y el **promedio por ave** mientras cargás. Si el promedio te
+  parece raro, es que falta un grupo o se coló un número de más.
+- **Usar total** lo lleva a la casilla.
+
+Si volvés a abrir la ventana, están las pesadas que habías cargado.
+
+> Si escribís el total directamente en la casilla, el desglose de grupos se borra: ya no
+> sería cierto que esos grupos suman ese total.
+
 ### El check "Excluir"
 
 Debajo de cada referencia de alimento (BR1, BR2…) hay un botón chico **"Excluir"**. Sirve para cuando una referencia **no la querés contar** en los indicadores de esa semana (por ejemplo, un alimento de prueba o una carga que no corresponde al análisis).

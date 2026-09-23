@@ -215,6 +215,15 @@ Flujos aparte del VM: `modoPorTratamiento: StateFlow<Boolean>` (persistido en `C
 - Tres matrices según categoría (`:132-138`):
   - **`MortalidadMatrix`** (`:328-432`): cabecera de 7 días (mes/día calculados desde `fechaInicio`), filas con badge de parcela + 7 celdas (`BasicTextField`, máx. 3 dígitos) + total. Las celdas son `readOnly`/`enabled` según `bloqueada` (= `ui.finalizada`).
   - **`PesoMatrix`** (`:434-519`): por parcela muestra aves vivas (saldo), campo de PESO TOTAL (g) y el promedio g/ave derivado.
+  - **Calculadora de pesadas.** La celda de PESO TOTAL lleva un ícono `Calculate` a la
+    derecha (verde si ya hay desglose guardado) que abre una ventana para sumar el peso de
+    cada grupo. Las aves se pesan por grupos —la balanza no aguanta la jaula entera— pero
+    se pesan TODAS, así que la suma es el total y el promedio sale de dividirla entre las
+    aves vivas, igual que al escribir el total a mano. La ventana muestra el promedio
+    mientras se digita, que es lo que delata un dedo de más. El desglose se guarda en
+    `DatoParcela.pesos` (campo que ya existía sin usar) y viaja en el `.davi`. **Escribir
+    el total a mano borra el desglose**: dejaría en el archivo una descomposición que no
+    suma ese número.
   - **Jaulas suspendidas.** Cada fila lleva en su distintivo un ícono `Block` chico,
     superpuesto en la esquina: tenue cuando la jaula está activa (pista de que ahí se
     suspende) y sólido cuando lo está. Tocar o mantener pulsado el distintivo abre el

@@ -26,7 +26,7 @@ class ImportarDaviTest {
         e.repo.guardarPartida(e.loteDeEjemplo(numero = numero, uid = uid, galeras = 1, corrales = 2, parcelas = 2))
         e.repo.upsertSemana(Semana(numero = 1, fechaInicio = "2026-01-01", fechaFin = "2026-01-07", refsActivas = listOf("BR1")))
         e.repo.upsertSemana(Semana(numero = 2, fechaInicio = "2026-01-08", fechaFin = "2026-01-14", refsActivas = listOf("BR1", "BR2")))
-        e.repo.savePeso(1, "G1-K1-P1", 185.0)
+        e.repo.savePeso(1, "G1-K1-P1", 185.0, listOf(1850.0, 1790.0, 1910.0))
         e.repo.saveMortalidad(1, "G1-K1-P1", listOf(1, 0, 0, 2, null, 0, 0))
         e.repo.saveRefAlimento(1, "G1-K1-P1", "BR1", ingreso = 30.0, saldoFin = 4.0)
         e.repo.savePeso(2, "G1-K1-P1", 450.0)
@@ -88,6 +88,8 @@ class ImportarDaviTest {
         val d1 = copia.datosPorParcela["G1-K1-P1"]!![1]!!
         assertEquals(185.0, d1.peso!!, 1e-9)
         assertEquals(listOf(1, 0, 0, 2, null, 0, 0), d1.mort)
+        // El desglose de pesadas también viaja: el registro conserva cómo se llegó al total.
+        assertEquals(listOf(1850.0, 1790.0, 1910.0), d1.pesos)
         assertEquals(30.0, d1.refs["BR1"]!!.ingreso!!, 1e-9)
         assertEquals(4.0, d1.refs["BR1"]!!.saldoFin!!, 1e-9)
 

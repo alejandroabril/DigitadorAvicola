@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -20,6 +19,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -625,6 +629,20 @@ fun PesoRow(
             
             val initialTotal = if (dato.peso != null && saldo > 0) (dato.peso * saldo) else null
             var localTotalStr by remember(initialTotal) { mutableStateOf(initialTotal?.let { String.format(Locale.US, "%.0f", it) } ?: "") }
+            var calculadoraAbierta by remember { mutableStateOf(false) }
+
+            if (calculadoraAbierta) {
+                CalculadoraPesadas(
+                    parcelaId = displayId,
+                    saldo = saldo,
+                    pesadasIniciales = dato.pesos,
+                    onDismiss = { calculadoraAbierta = false },
+                    onConfirmar = { pesadas ->
+                        vm.updatePesadas(semNum, p.id, pesadas, saldo)
+                        calculadoraAbierta = false
+                    }
+                )
+            }
 
             Box(
                 modifier = Modifier.weight(1f).height(44.dp)
@@ -637,11 +655,25 @@ fun PesoRow(
                     onValueChange = { if (it.length <= 8 && it.all { c -> c.isDigit() }) { localTotalStr = it; vm.updatePeso(semNum, p.id, it, saldo) } },
                     readOnly = bloqueada,
                     enabled = !bloqueada,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 34.dp),
                     textStyle = TextStyle(textAlign = TextAlign.Center, fontSize = 18.sp, fontWeight = FontWeight.Black),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done)
                 )
+                // Abre la suma por grupos. Escribir directo en la celda sigue funcionando:
+                // una parcela pesada de una vez no tiene por qué pasar por la ventana.
+                IconButton(
+                    onClick = { calculadoraAbierta = true },
+                    enabled = !bloqueada,
+                    modifier = Modifier.align(Alignment.CenterEnd).size(34.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Calculate,
+                        "Sumar pesadas por grupos",
+                        tint = if (dato.pesos.isNotEmpty()) AvicolaPrimary else TextTertiary,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
             }
 
             Column(modifier = Modifier.width(70.dp), horizontalAlignment = Alignment.End) {
@@ -978,6 +1010,131 @@ private fun DialogoSuspension(
                     color = if (suspender) Danger else AvicolaPrimary,
                     fontWeight = FontWeight.Black
                 )
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
+
+
+/**
+ * Suma las pesadas de una parcela. Las aves se pesan por grupos —la balanza no aguanta la
+ * jaula entera sin comprometer al animal— pero se pesan TODAS, así que la suma es el peso
+ * total y el promedio sale de dividirla entre las aves vivas.
+ *
+ * Muestra el promedio mientras se digita: un dedo de más se ve en el acto, porque el
+ * digitador sabe cuánto debería pesar un ave de esa semana. Si el desglose se guarda,
+ * al reabrir la ventana están las pesadas anteriores.
+ */
+@Composable
+private fun CalculadoraPesadas(
+    parcelaId: String,
+    saldo: Int,
+    pesadasIniciales: List<Double>,
+    onDismiss: () -> Unit,
+    onConfirmar: (List<Double>) -> Unit
+) {
+    val pesadas = remember { mutableStateListOf<Double>().apply { addAll(pesadasIniciales) } }
+    var entrada by remember { mutableStateOf("") }
+    val foco = remember { FocusRequester() }
+
+    val total = pesadas.sum()
+    val promedio = if (saldo > 0 && total > 0) total / saldo else null
+
+    fun agregar() {
+        val v = entrada.replace(',', '.').toDoubleOrNull()
+        if (v != null && v > 0) { pesadas.add(v); entrada = "" }
+    }
+
+    LaunchedEffect(Unit) { foco.requestFocus() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("Pesadas · $parcelaId", fontWeight = FontWeight.Black)
+                Text(
+                    "$saldo aves vivas · se pesan todas, por grupos",
+                    style = MaterialTheme.typography.labelSmall, color = TextTertiary
+                )
+            }
+        },
+        text = {
+            Column {
+                if (pesadas.isEmpty()) {
+                    Text(
+                        "Agregá el peso de cada grupo. El total y el promedio se calculan solos.",
+                        style = MaterialTheme.typography.bodySmall, color = TextTertiary
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier.heightIn(max = 190.dp).verticalScroll(rememberScrollState())
+                    ) {
+                        pesadas.forEachIndexed { i, v ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "${i + 1}", Modifier.width(26.dp),
+                                    style = MaterialTheme.typography.labelSmall, color = TextTertiary
+                                )
+                                Text(
+                                    String.format(Locale.US, "%,.0f g", v).replace(',', '.'),
+                                    modifier = Modifier.weight(1f),
+                                    fontWeight = FontWeight.Bold, fontSize = 16.sp
+                                )
+                                IconButton(onClick = { pesadas.removeAt(i) }, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Default.Close, "Quitar la pesada ${i + 1}", tint = TextTertiary, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = entrada,
+                        onValueChange = { entrada = it.filter { c -> c.isDigit() || c == ',' || c == '.' } },
+                        label = { Text("Peso del grupo (g)") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).focusRequester(foco),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                        // Enter agrega y deja el cursor listo para el grupo siguiente:
+                        // en campo se cargan varios seguidos.
+                        keyboardActions = KeyboardActions(onDone = { agregar() })
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    FilledIconButton(onClick = { agregar() }, enabled = entrada.isNotBlank()) {
+                        Icon(Icons.Default.Add, "Agregar la pesada")
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = Line)
+                Spacer(Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        if (pesadas.size == 1) "1 pesada" else "${pesadas.size} pesadas",
+                        style = MaterialTheme.typography.labelSmall, color = TextTertiary
+                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            "TOTAL " + String.format(Locale.US, "%,.0f g", total).replace(',', '.'),
+                            fontWeight = FontWeight.Black, fontSize = 16.sp
+                        )
+                        Text(
+                            promedio?.let { String.format(Locale.US, "PROM %.1f g/ave", it) } ?: "PROM —",
+                            style = MaterialTheme.typography.labelSmall, color = GreenWeight, fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirmar(pesadas.toList()) }, enabled = pesadas.isNotEmpty()) {
+                Text("Usar total", color = AvicolaPrimary, fontWeight = FontWeight.Black)
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }

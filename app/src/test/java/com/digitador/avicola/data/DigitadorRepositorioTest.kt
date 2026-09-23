@@ -200,6 +200,41 @@ class DigitadorRepositorioTest {
         assertFalse(estado.getSemana(1)!!.cerrada)
     }
 
+    // ── Desglose de pesadas ──────────────────────────────────
+
+    /**
+     * Las aves se pesan por grupos (la balanza no aguanta la jaula entera) pero se pesan
+     * TODAS: la suma es el peso total y el promedio sale de dividirla entre las vivas.
+     * El desglose se guarda para que el registro muestre cómo se llegó al total.
+     */
+    @Test
+    fun `el desglose de pesadas sobrevive a la recarga`() = runBlocking {
+        val id = e.repo.guardarPartida(e.loteDeEjemplo(galeras = 1, corrales = 1, parcelas = 1))
+        e.repo.upsertSemana(Semana(numero = 2))
+
+        val pesadas = listOf(1850.0, 1790.0, 1905.0)   // tres grupos
+        val saldo = 40
+        e.repo.savePeso(2, "G1-K1-P1", pesadas.sum() / saldo, pesadas)
+
+        val d = e.repo.cargarEstado(id).datosPorParcela["G1-K1-P1"]!![2]!!
+        assertEquals("se perdió el desglose", pesadas, d.pesos)
+        assertEquals(5545.0 / 40, d.peso!!, 1e-9)
+    }
+
+    /** Guardar solo el promedio deja el desglose vacío, no el anterior. */
+    @Test
+    fun `guardar un peso sin desglose no arrastra el anterior`() = runBlocking {
+        val id = e.repo.guardarPartida(e.loteDeEjemplo(galeras = 1, corrales = 1, parcelas = 1))
+        e.repo.upsertSemana(Semana(numero = 1))
+
+        e.repo.savePeso(1, "G1-K1-P1", 140.0, listOf(1850.0, 1790.0))
+        e.repo.savePeso(1, "G1-K1-P1", 150.0)
+
+        val d = e.repo.cargarEstado(id).datosPorParcela["G1-K1-P1"]!![1]!!
+        assertEquals(150.0, d.peso!!, 1e-9)
+        assertTrue("quedó un desglose que ya no explica el total", d.pesos.isEmpty())
+    }
+
     // ── Suspensión de jaulas ─────────────────────────────────
 
     @Test
